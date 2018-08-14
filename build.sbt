@@ -1,4 +1,4 @@
-import Scalaz._
+import ScalazBuild._
 
 organization in ThisBuild := "org.scalaz"
 
@@ -27,5 +27,7 @@ addCommandAlias("check", "all scalafmtSbtCheck scalafmtCheck test:scalafmtCheck"
 lazy val root =
   (project in file("."))
     .settings(
-      stdSettings("parsers")
+      stdSettings("parsers"),
+      resolvers += "Sonatype OSS Snapshots" at "https://oss.sonatype.org/content/repositories/snapshots",
+      libraryDependencies += "org.scalaz" %% "scalaz-base" % "96627337-SNAPSHOT"
     )
