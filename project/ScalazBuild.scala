@@ -51,8 +51,8 @@ object ScalazBuild {
   def stdSettings(prjName: String) = Seq(
     name := s"scalaz-$prjName",
     scalacOptions := stdOptions,
-    //crossScalaVersions := Seq("2.12.6", "2.11.12"),
-    scalaVersion in ThisBuild := "2.12.6",
+    crossScalaVersions := Seq("2.12.6", "2.11.12"),
+    scalaVersion in ThisBuild := crossScalaVersions.value.head,
     scalacOptions := stdOptions ++ extraOptions(scalaVersion.value),
     libraryDependencies ++= compileOnlyDeps ++ testDeps ++ Seq(
       compilerPlugin("org.spire-math"         %% "kind-projector"  % "0.9.7"),
