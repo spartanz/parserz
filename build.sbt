@@ -30,6 +30,9 @@ lazy val root =
       resolvers += "Sonatype OSS Snapshots".at(
         "https://oss.sonatype.org/content/repositories/snapshots"
       ),
-      libraryDependencies += "org.scalaz" %% "scalaz-base" % "96627337-SNAPSHOT",
+      libraryDependencies ++= Seq(
+        "org.scalaz" %% "scalaz-base" % "8.0.0-SNAPSHOT",
+        "org.scalaz" %% "scalaz-zio"  % "0.1-SNAPSHOT"
+      ),
       stdSettings("parsers")
     )
