@@ -1,14 +1,14 @@
 addCommandAlias("fmt", "all scalafmtSbt scalafmt test:scalafmt")
 addCommandAlias("check", "all scalafmtSbtCheck scalafmtCheck test:scalafmtCheck")
 
-inThisBuild(
-  List(
-    organization := "org.scalaz",
-    homepage := Some(url("https://github.com/scalaz/scalaz-parsers")),
-    licenses := List("Apache-2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0")),
-    developers := List()
-  )
-)
+//inThisBuild(
+//  List(
+//    organization := "org.scalaz",
+//    homepage := Some(url("https://github.com/scalaz/scalaz-parsers")),
+//    licenses := List("Apache-2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0")),
+//    developers := List()
+//  )
+//)
 
 //lazy val scalaz =
 //  ProjectRef(
@@ -24,8 +24,8 @@ lazy val root =
 //        "https://oss.sonatype.org/content/repositories/snapshots"
 //      ),
       libraryDependencies ++= Seq(
-        "org.scalaz" %% "scalaz-base" % "96627337-SNAPSHOT",
-        "org.scalaz" %% "scalaz-zio"  % "0.1-SNAPSHOT"
+        "org.scalaz" %% "scalaz-base" % "8.0.0-SNAPSHOT"
+//        "org.scalaz" %% "scalaz-zio"  % "0.1-SNAPSHOT"
       )
     )
 //    .dependsOn(scalaz)
