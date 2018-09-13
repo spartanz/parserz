@@ -10,25 +10,25 @@ inThisBuild(
   )
 )
 
-lazy val scalaz =
-  ProjectRef(
-    uri("git:https://github.com/scalaz/scalaz.git#series/8.0.x"),
-    "baseJVM"
-  )
+//lazy val scalaz =
+//  ProjectRef(
+//    uri("git:https://github.com/scalaz/scalaz.git#series/8.0.x"),
+//    "baseJVM"
+//  )
 
 lazy val root =
   (project in file("."))
     .settings(
       name := "scalaz-parsers",
-      resolvers += "Sonatype OSS Snapshots".at(
-        "https://oss.sonatype.org/content/repositories/snapshots"
-      ),
+//      resolvers += "Sonatype OSS Snapshots".at(
+//        "https://oss.sonatype.org/content/repositories/snapshots"
+//      ),
       libraryDependencies ++= Seq(
-//        "org.scalaz" %% "scalaz-base" % "96627337-SNAPSHOT",
-        "org.scalaz" %% "scalaz-zio" % "0.2.7"
+        "org.scalaz" %% "scalaz-base" % "96627337-SNAPSHOT",
+        "org.scalaz" %% "scalaz-zio"  % "0.1-SNAPSHOT"
       )
     )
-    .dependsOn(scalaz)
+//    .dependsOn(scalaz)
     .enablePlugins(BuildInfoPlugin)
     .settings(
       buildInfoKeys := Seq[BuildInfoKey](name, version, scalaVersion, sbtVersion),
