@@ -1,6 +1,14 @@
-
 addCommandAlias("fmt", "all scalafmtSbt scalafmt test:scalafmt")
 addCommandAlias("check", "all scalafmtSbtCheck scalafmtCheck test:scalafmtCheck")
+
+inThisBuild(
+  List(
+    organization := "org.scalaz",
+    homepage := Some(url("https://github.com/scalaz/scalaz-parsers")),
+    licenses := List("Apache-2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0")),
+    developers := List()
+  )
+)
 
 lazy val root =
   (project in file("."))
