@@ -14,12 +14,11 @@ lazy val root =
   (project in file("."))
     .settings(
       name := "scalaz-parsers",
-      resolvers += "Sonatype OSS Snapshots".at(
-        "https://oss.sonatype.org/content/repositories/snapshots"
+      resolvers += "Sonatype OSS Staging".at(
+        "https://oss.sonatype.org/content/repositories/staging"
       ),
       libraryDependencies ++= Seq(
-        "org.scalaz" %% "scalaz-base" % "8.0.0-SNAPSHOT",
-        "org.scalaz" %% "scalaz-zio"  % "0.1-SNAPSHOT"
+        "org.scalaz" %% "scalaz-base" % "96627337-SNAPSHOT"
       )
     )
     .enablePlugins(BuildInfoPlugin)
