@@ -18,6 +18,7 @@ lazy val root =
         "https://oss.sonatype.org/content/repositories/staging"
       ),
       libraryDependencies ++= Seq(
+        "org.scalaz" %% "scalaz-zio" % "0.2.9",
         "org.scalaz" %% "scalaz-base" % "96627337-SNAPSHOT"
       )
     )
