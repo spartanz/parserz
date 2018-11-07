@@ -1,6 +1,5 @@
 package scalaz.parsers
 
-import scalaz.data.~>
 import scalaz.tc._
 
 trait Iso[F[_], G[_], A, B] { self =>
@@ -43,11 +42,11 @@ object Combinators {
         override def from: UGV[B, A] = (b: B) => AG.or(ab.from(b), abOther.from(b))
       }
 
-    def unary_~(implicit GF: G ~> F, FG: F ~> G): Iso[F, G, B, A] =
-      new Iso[F, G, B, A] {
-        override def to: UFV[B, A]   = (b: B) => GF.apply(ab.from(b))
-        override def from: UGV[A, B] = (a: A) => FG.apply(ab.to(a))
-      }
+//    def unary_~(implicit GF: G ~> F, FG: F ~> G): Iso[F, G, B, A] =
+//      new Iso[F, G, B, A] {
+//        override def to: UFV[B, A]   = (b: B) => GF.apply(ab.from(b))
+//        override def from: UGV[A, B] = (a: A) => FG.apply(ab.to(a))
+//      }
 
     def ⓧ [A2, B2](
       other: Iso[F, G, A2, B2]
@@ -64,46 +63,38 @@ object Combinators {
 
     def liftA(implicit AF: Applicative[F], AG: Applicative[G]): Iso[F, G, A, A] =
       new Iso[F, G, A, A] {
-        override def to: UFV[A, A] = {
-          case a => AF.ap(AF.pure(a))(AF.pure[A => A](identity))
-        }
+        override def to: UFV[A, A] =
+          a => AF.ap(AF.pure(a))(AF.pure[A => A](identity))
 
-        override def from: UGV[A, A] = {
-          case a => AG.ap(AG.pure(a))(AG.pure[A => A](identity))
-        }
+        override def from: UGV[A, A] =
+          a => AG.ap(AG.pure(a))(AG.pure[A => A](identity))
       }
 
     def liftB(implicit AF: Applicative[F], AG: Applicative[G]): Iso[F, G, B, B] =
       new Iso[F, G, B, B] {
-        override def to: UFV[B, B] = {
-          case b => AF.ap(AF.pure(b))(AF.pure[B => B](identity))
-        }
+        override def to: UFV[B, B] =
+          b => AF.ap(AF.pure(b))(AF.pure[B => B](identity))
 
-        override def from: UGV[B, B] = {
-          case a => AG.ap(AG.pure(a))(AG.pure[B => B](identity))
-        }
+        override def from: UGV[B, B] =
+          a => AG.ap(AG.pure(a))(AG.pure[B => B](identity))
       }
 
     def unitA(a: A)(implicit AF: Applicative[F], AG: Applicative[G]): Iso[F, G, A, Unit] =
       new Iso[F, G, A, Unit] {
-        override def to: UFV[A, Unit] = {
-          case a0 => AF.ap[A, Unit](AF.pure(a0))(AF.pure[A => Unit](_ => ()))
-        }
+        override def to: UFV[A, Unit] =
+          a0 => AF.ap[A, Unit](AF.pure(a0))(AF.pure[A => Unit](_ => ()))
 
-        override def from: UGV[Unit, A] = {
-          case _ => AG.ap[Unit, A](AG.pure(()))(AG.pure[Unit => A](_ => a))
-        }
+        override def from: UGV[Unit, A] =
+          _ => AG.ap[Unit, A](AG.pure(()))(AG.pure[Unit => A](_ => a))
       }
 
     def unitB(b: B)(implicit AF: Applicative[F], AG: Applicative[G]): Iso[F, G, B, Unit] =
       new Iso[F, G, B, Unit] {
-        override def to: UFV[B, Unit] = {
-          case b0 => AF.ap[B, Unit](AF.pure(b0))(AF.pure[B => Unit](_ => ()))
-        }
+        override def to: UFV[B, Unit] =
+          b0 => AF.ap[B, Unit](AF.pure(b0))(AF.pure[B => Unit](_ => ()))
 
-        override def from: UGV[Unit, B] = {
-          case _ => AG.ap[Unit, B](AG.pure(()))(AG.pure[Unit => B](_ => b))
-        }
+        override def from: UGV[Unit, B] =
+          _ => AG.ap[Unit, B](AG.pure(()))(AG.pure[Unit => B](_ => b))
       }
 
     def associate[C](
@@ -130,11 +121,10 @@ object Combinators {
         }
       }
 
-    def unit[A](implicit AF: Applicative[F], AG: Applicative[G]): Iso[F, G, A, (A, Unit)] =
+    def unit(implicit AF: Applicative[F], AG: Applicative[G]): Iso[F, G, A, (A, Unit)] =
       new Iso[F, G, A, (A, Unit)] {
-        override def to: UFV[A, (A, Unit)] = {
-          case a => AF.pure((a, ()))
-        }
+        override def to: UFV[A, (A, Unit)] =
+          a => AF.pure((a, ()))
 
         override def from: UGV[(A, Unit), A] = {
           case (a, _) => AG.pure(a)
