@@ -19,7 +19,8 @@ lazy val root =
       ),
       libraryDependencies ++= Seq(
         "org.scalaz" %% "scalaz-zio"  % "0.2.9",
-        "org.scalaz" %% "scalaz-base" % "96627337-SNAPSHOT"
+        "org.scalaz" %% "scalaz-base" % "96627337-SNAPSHOT",
+        "org.specs2" %% "specs2-core" % "4.3.5" % Test
       )
     )
     .enablePlugins(BuildInfoPlugin)
