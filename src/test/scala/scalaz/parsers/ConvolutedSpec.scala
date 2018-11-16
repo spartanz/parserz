@@ -1,10 +1,9 @@
 package scalaz.parsers
 
-import org.specs2.mutable.Specification
 import scalaz.parsers.Convoluted.Parsers
 import scalaz.parsers.Convoluted.Syntax.Number
 
-class SimplestSpec extends Specification {
+class ConvolutedSpec extends Specification {
 
   "Simplest parser" should {
     "parse a digit into a literal" in {
