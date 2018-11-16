@@ -1,5 +1,6 @@
 package scalaz.parsers
 
+import org.specs2.mutable.Specification
 import scalaz.parsers.Convoluted.Parsers
 import scalaz.parsers.Convoluted.Syntax.Number
 

@@ -1,6 +1,6 @@
 package scalaz.parsers
 
-import scalaz.tc.{Category, CategoryClass, instanceOf}
+import scalaz.tc.{ Category, CategoryClass, instanceOf }
 
 object Convoluted {
 

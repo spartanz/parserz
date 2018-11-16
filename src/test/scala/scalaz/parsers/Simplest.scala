@@ -12,10 +12,9 @@ object Simplest {
   type Parser[A]  = List[Char] => Result[A]
   type Printer[A] = A => List[Char]
 
-  type BaseFunction[F[_], A, B] = A => F[B] // May not need this
-  type TFunction[A, B]          = BaseFunction[Id, A, B]
-  type PFunction[A, B]          = BaseFunction[Option, A, B]
-  type PIso[A, B]               = Iso[Option, Id, A, B]
+  type TFunction[A, B] = A => Id[B]
+  type PFunction[A, B] = A => Option[B]
+  type PIso[A, B]      = Iso[Option, Id, A, B]
 
   implicit def categoryOfTotalFunctions: Category[TFunction] = instanceOf(
     new CategoryClass[TFunction] {
