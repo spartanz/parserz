@@ -24,10 +24,6 @@ trait Iso[F[_], G[_], A, B] { self =>
 
 object Combinators {
 
-  trait TempAlternative[F[_]] {
-    def or[A](f1: F[A], f2: => F[A]): F[A]
-  }
-
   implicit class IsoOps[F[_], G[_], A, B](ab: Iso[F, G, A, B]) {
 
     def ∘ [C](
@@ -36,7 +32,7 @@ object Combinators {
 
     def | (
       abOther: Iso[F, G, A, B]
-    )(AF: TempAlternative[F], AG: TempAlternative[G]): Iso[F, G, A, B] =
+    )(AF: Alternative[F], AG: Alternative[G]): Iso[F, G, A, B] =
       new Iso[F, G, A, B] {
         override def to: UFV[A, B]   = (a: A) => AF.or(ab.to(a), abOther.to(a))
         override def from: UGV[B, A] = (b: B) => AG.or(ab.from(b), abOther.from(b))
