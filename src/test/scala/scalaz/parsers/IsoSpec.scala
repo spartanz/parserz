@@ -9,7 +9,7 @@ class IsoSpec extends Specification {
   private type TFun[A, B] = A => Id[B]
   private type TIso[A, B] = Iso[Id, Id, A, B]
 
-  implicit private val idCategory: Category[TFun] = instanceOf(
+  implicit private val funCategory: Category[TFun] = instanceOf(
     new CategoryClass[TFun] {
       def id[A]: TFun[A, A]                                          = identity
       def compose[A, B, C](f: TFun[B, C], g: TFun[A, B]): TFun[A, C] = g.andThen(f)
@@ -43,23 +43,41 @@ class IsoSpec extends Specification {
     "via associate" in {
       verify(
         Iso.associate[Id, Id, Int, Long, String],
-        1  -> (2L -> "s"),
-        (1 -> 2L) -> "s"
+        (1, (2L, "s")),
+        ((1, 2L), "s")
+      )
+    }
+    "via flatten" in {
+      verify(
+        Iso.flatten[Id, Id, Int, Long, String],
+        (1, (2L, "s")),
+        (1, 2L, "s")
       )
     }
   }
 
   "Transforming Iso" >> {
     "via associate" in {
-      val iso1: TIso[Unit, (Int, (Long, String))] = unitL(1 -> (2L -> "s"))
+      val iso1: TIso[Unit, (Int, (Long, String))] = unitL((1, (2L, "s")))
       val iso2: TIso[Unit, ((Int, Long), String)] = iso1 >>> Iso.associate
 
-      verify(iso2, (), (1 -> 2L) -> "s")
+      verify(iso2, (), ((1, 2L), "s"))
 
-      val iso3: TIso[((Int, Long), String), Unit] = unitR((1 -> 2L) -> "s")
+      val iso3: TIso[((Int, Long), String), Unit] = unitR(((1, 2L), "s"))
       val iso4: TIso[(Int, (Long, String)), Unit] = iso3 <<< Iso.associate
 
-      verify(iso4, 1 -> (2L -> "s"), ())
+      verify(iso4, (1, (2L, "s")), ())
+    }
+    "via flatten" in {
+      val iso1: TIso[Unit, (Int, (Long, String))] = unitL((1, (2L, "s")))
+      val iso2: TIso[Unit, (Int, Long, String)]   = iso1 >>> Iso.flatten
+
+      verify(iso2, (), (1, 2L, "s"))
+
+      val iso3: TIso[(Int, Long, String), Unit]   = unitR((1, 2L, "s"))
+      val iso4: TIso[(Int, (Long, String)), Unit] = iso3 <<< Iso.flatten
+
+      verify(iso4, (1, (2L, "s")), ())
     }
   }
 }
