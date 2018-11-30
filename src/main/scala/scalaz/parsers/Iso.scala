@@ -1,5 +1,6 @@
 package scalaz.parsers
 
+import scalaz.data.~>
 import scalaz.tc._
 
 trait Iso[F[_], G[_], A, B] { self =>
@@ -42,11 +43,11 @@ object Combinators {
         override def from: UGV[B, A] = (b: B) => AG.or(ab.from(b), abOther.from(b))
       }
 
-//    def unary_~(implicit GF: G ~> F, FG: F ~> G): Iso[F, G, B, A] =
-//      new Iso[F, G, B, A] {
-//        override def to: UFV[B, A]   = (b: B) => GF.apply(ab.from(b))
-//        override def from: UGV[A, B] = (a: A) => FG.apply(ab.to(a))
-//      }
+    def unary_~(implicit FG: F ~> G, GF: G ~> F): Iso[F, G, B, A] =
+      new Iso[F, G, B, A] {
+        override def to: UFV[B, A]   = b => GF.apply(ab.from(b))
+        override def from: UGV[A, B] = a => FG.apply(ab.to(a))
+      }
 
     def ⓧ [A2, B2](
       other: Iso[F, G, A2, B2]
