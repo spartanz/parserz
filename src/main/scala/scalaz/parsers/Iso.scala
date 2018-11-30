@@ -23,6 +23,35 @@ trait Iso[F[_], G[_], A, B] { self =>
   )(implicit C1: Category[UFV], C2: Category[UGV]): Iso[F, G, C, B] = that >>> self
 }
 
+object Iso {
+
+  def associate[F[_], G[_], A, B, C](
+    implicit F: Applicative[F],
+    G: Applicative[G]
+  ): Iso[F, G, (A, (B, C)), ((A, B), C)] =
+    new Iso[F, G, (A, (B, C)), ((A, B), C)] {
+      override def to: UFV[(A, (B, C)), ((A, B), C)] = {
+        case (a, (b, c)) => F.pure(((a, b), c))
+      }
+      override def from: UGV[((A, B), C), (A, (B, C))] = {
+        case ((a, b), c) => G.pure((a, (b, c)))
+      }
+    }
+
+  def flatten[F[_], G[_], A, B, C](
+    implicit F: Applicative[F],
+    G: Applicative[G]
+  ): Iso[F, G, (A, (B, C)), (A, B, C)] =
+    new Iso[F, G, (A, (B, C)), (A, B, C)] {
+      override def to: UFV[(A, (B, C)), (A, B, C)] = {
+        case (a, (b, c)) => F.pure((a, b, c))
+      }
+      override def from: UGV[(A, B, C), (A, (B, C))] = {
+        case (a, b, c) => G.pure((a, (b, c)))
+      }
+    }
+}
+
 object Combinators {
 
   trait TempAlternative[F[_]] {
@@ -98,19 +127,6 @@ object Combinators {
           _ => AG.ap[Unit, B](AG.pure(()))(AG.pure[Unit => B](_ => b))
       }
 
-    def associate[C](
-      implicit AF: Applicative[F],
-      AG: Applicative[G]
-    ): Iso[F, G, (A, (B, C)), ((A, B), C)] = new Iso[F, G, (A, (B, C)), ((A, B), C)] {
-      override def to: UFV[(A, (B, C)), ((A, B), C)] = {
-        case (a, (b, c)) => AF.pure((a -> b) -> c)
-      }
-
-      override def from: UGV[((A, B), C), (A, (B, C))] = {
-        case ((a, b), c) => AG.pure(a -> (b -> c))
-      }
-    }
-
     def commute(implicit AF: Applicative[F], AG: Applicative[G]): Iso[F, G, (A, B), (B, A)] =
       new Iso[F, G, (A, B), (B, A)] {
         override def to: UFV[(A, B), (B, A)] = {
@@ -131,19 +147,5 @@ object Combinators {
           case (a, _) => AG.pure(a)
         }
       }
-
-    def flatten[C](
-      implicit AF: Applicative[F],
-      AG: Applicative[G]
-    ): Iso[F, G, (A, (B, C)), (A, B, C)] = new Iso[F, G, (A, (B, C)), (A, B, C)] {
-      override def to: UFV[(A, (B, C)), (A, B, C)] = {
-        case (a, (b, c)) => AF.pure((a, b, c))
-      }
-
-      override def from: UGV[(A, B, C), (A, (B, C))] = {
-        case (a, b, c) => AG.pure(a -> (b -> c))
-      }
-    }
-
   }
 }
