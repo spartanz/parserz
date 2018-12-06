@@ -6,6 +6,7 @@ import scalaz.tc._
 
 object Simplest {
 
+  type /\[A, B] = (A, B)
   type \/[A, B] = Either[A, B]
 
   type Error      = Unit
@@ -32,8 +33,7 @@ object Simplest {
         override def pure[A](a: A): Parser[A] =
           chars => Right(chars -> a)
         override def ap[A, B](fa: Parser[A])(fab: Parser[A => B]): Parser[B] =
-          chars =>
-            fa(chars).flatMap { case (cs, a) => fab(cs).map { case (cs2, f) => cs2 -> f(a) } }
+          fa(_).flatMap { case (cs, a) => fab(cs).map { case (cs2, f) => cs2 -> f(a) } }
         override def map[A, B](fa: Parser[A])(f: A => B): Parser[B] =
           ap(fa)(pure(f))
       }
@@ -45,49 +45,50 @@ object Simplest {
     implicit val alternativeParser: Alternative[Parser] = instanceOf(
       new AlternativeClass[Parser] {
         override def or[A](f1: Parser[A], f2: => Parser[A]): Parser[A] =
-          chars => f1(chars).fold(_ => f2(chars), Right(_))
+          chars =>
+            (f1(chars), f2(chars)) match {
+              case (r1, Left(_)) => r1
+              case (Left(_), r2) => r2
+              case (r1 @ Right((c1, _)), r2 @ Right((c2, _))) =>
+                if (c1.lengthCompare(c2.length) <= 0) r1 else r2
+            }
       }
     )
 
-    implicit val ntIdOption: Id ~> Option = ∀.mk[Id ~> Option].from(Some.apply)
-    implicit val ntOptionId: Option ~> Id = ∀.mk[Option ~> Id].from(_.get)
+    implicit val OptionToOption: Option ~> Option =
+      ∀.mk[Option ~> Option].from(identity)
+
+    implicit val CategoryOfPartialFunctions: Category[PFunction] = instanceOf(
+      new CategoryClass[PFunction] {
+        override def id[A]: PFunction[A, A] = Option.apply
+        override def compose[A, B, C](
+          f: PFunction[B, C],
+          g: PFunction[A, B]
+        ): PFunction[A, C] = g(_).flatMap(f)
+      }
+    )
   }
 
-  type TFunction[A, B] = A => Id[B]
   type PFunction[A, B] = A => Option[B]
-  type PIso[A, B]      = Iso[Option, Id, A, B]
-
-  object PIso extends ProductIso[Option, Id]
-
-  implicit val categoryOfTotalFunctions: Category[TFunction] = instanceOf(
-    new CategoryClass[TFunction] {
-      override def id[A]: TFunction[A, A] = identity
-      override def compose[A, B, C](
-        f: TFunction[B, C],
-        g: TFunction[A, B]
-      ): TFunction[A, C] = g.andThen(f)
-    }
-  )
-
-  implicit val categoryOfPartialFunctions: Category[PFunction] = instanceOf(
-    new CategoryClass[PFunction] {
-      override def id[A]: PFunction[A, A] = Option.apply
-      override def compose[A, B, C](
-        f: PFunction[B, C],
-        g: PFunction[A, B]
-      ): PFunction[A, C] = g(_).flatMap(f)
-    }
-  )
+  type PIso[A, B]      = Iso[Option, Option, A, B]
+  object PIso extends ProductIso[Option, Option]
 
   object Syntax {
     sealed trait Expression
     case class Number(value: Int)                  extends Expression
-    case class Composition(n1: Number, n2: Number) extends Expression
+    case class Sum(e1: Expression, e2: Expression) extends Expression
+  }
+
+  object Parser {
+
+    def delay[A](pa: => Parser[A]): Parser[A] =
+      pa(_)
+
+    def pure[A](a: A)(implicit F: Applicative[Parser]): Parser[A] =
+      F.pure(a)
   }
 
   object Parsers {
-    import Combinators._
-    import PIso._
     import IsoInstances._
     import ScalazInstances._
     import Syntax._
@@ -109,55 +110,118 @@ object Simplest {
     val number: Parser[Number] =
       integer ∘ apply(Number, _.value)
 
-    val composition: Parser[Composition] =
-      (number /\ plus /\ number) ∘ (~associate[Number, Char, Number] >>> flatten >>> apply(
-        { case (n1, _, n2) => Composition(n1, n2) },
-        c => (c.n1, '+', c.n2)
-      ))
+    val numberIso: PIso[Number, Expression] = unsafe(
+      { case a             => a },
+      { case n @ Number(_) => n }
+    )
 
-    val expression: Parser[Expression] =
-      (composition \/ number) ∘ toExpression
+    val sumIso: PIso[Expression /\ (Char /\ Expression), Expression] = unsafe(
+      { case (e1, (_, e2)) => Sum(e1, e2) },
+      { case Sum(e1, e2)   => e1 -> ('+' -> e2) }
+    )
+
+    val expression0: Parser[Expression] =
+      number ∘ numberIso
+
+    val expression1: Parser[Expression] =
+      (expression0 /\ (plus /\ expression0).many) ∘ foldL(sumIso)
+
+    lazy val expression: Parser[Expression] =
+      expression1
   }
 
   object IsoInstances {
-    import Syntax._
 
     def subset[A](p: A => Boolean): PIso[A, A] = new PIso[A, A] {
       def to: UFV[A, A]   = Some(_).filter(p)
-      def from: UGV[A, A] = identity
+      def from: UGV[A, A] = to
     }
 
     def id[A]: PIso[A, A] = new PIso[A, A] {
-      override def to: UFV[A, A]   = Some(_)
-      override def from: UGV[A, A] = identity
+      def to: UFV[A, A]   = Some(_)
+      def from: UGV[A, A] = to
     }
 
     def apply[A, B](ab: A => B, ba: B => A): PIso[A, B] = new PIso[A, B] {
-      override def to: UFV[A, B]   = a => Some(a).map(ab)
-      override def from: UGV[B, A] = ba
+      def to: UFV[A, B]   = Some(_).map(ab)
+      def from: UGV[B, A] = Some(_).map(ba)
     }
 
-    val toExpression: PIso[Composition \/ Number, Expression] =
-      new PIso[Composition \/ Number, Expression] {
-        override def to: UFV[Composition \/ Number, Expression] = _.fold(Some(_), Some(_))
-        override def from: UGV[Expression, Composition \/ Number] = {
-          case c @ Composition(_, _) => Left(c)
-          case n @ Number(_)         => Right(n)
-        }
+    def unsafe[A, B](ab: PartialFunction[A, B], ba: PartialFunction[B, A]): PIso[A, B] =
+      new PIso[A, B] {
+        def to: UFV[A, B]   = ab.lift
+        def from: UGV[B, A] = ba.lift
       }
+
+    def nil[A]: PIso[Unit, List[A]] = unsafe(
+      { case ()  => Nil },
+      { case Nil => () }
+    )
+
+    def nel[A]: PIso[(A, List[A]), List[A]] = unsafe(
+      { case (x, xs) => x :: xs },
+      { case x :: xs => (x, xs) }
+    )
+
+    def list[A]: PIso[Unit \/ (A /\ List[A]), List[A]] = unsafe(
+      {
+        case Left(_)        => Nil
+        case Right((a, as)) => a :: as
+      }, {
+        case Nil     => Left(())
+        case a :: as => Right((a, as))
+      }
+    )
+
+    def iterate[A](iso: PIso[A, A]): PIso[A, A] = {
+      @annotation.tailrec
+      def step(f: A => Option[A], state: A): A =
+        f(state) match {
+          case Some(state1) => step(f, state1)
+          case None         => state
+        }
+      new PIso[A, A] {
+        def to: UFV[A, A]   = a => Some(step(iso.to, a))
+        def from: UGV[A, A] = a => Some(step(iso.from, a))
+      }
+    }
+
+    import PIso._
+
+    def foldL[A, B](iso: PIso[A ⓧ B, A]): PIso[A ⓧ List[B], A] = {
+      import Combinators._
+      import ScalazInstances._
+      def step: PIso[A ⓧ List[B], A ⓧ List[B]] = {
+        val first: PIso[A ⓧ List[B], A ⓧ (B ⓧ List[B])] = id[A] ⓧ ~nel[B]
+        val app: PIso[A ⓧ B ⓧ List[B], A ⓧ List[B]]     = iso ⓧ id[List[B]]
+        first >>> associate >>> app
+      }
+      iterate(step) >>> (id[A] ⓧ ~nil[B]) >>> ~unitR[A]
+    }
   }
 
   implicit class ParserOps[A](p: Parser[A]) {
+    import Parser._
+    import IsoInstances._
 
-    def /\ [B](other: Parser[B])(implicit F: Applicative[Parser]): Parser[(A, B)] =
-      F.ap(other)(F.ap(p)(F.pure[A => B => (A, B)](a => b => (a, b))))
+    def /\ [B](other: Parser[B])(implicit F: Applicative[Parser]): Parser[A /\ B] =
+      F.ap(p)(F.ap(other)(F.pure[B => A => A /\ B](b => a => (a, b))))
 
     def \/ [B](
       other: => Parser[B]
     )(implicit F: Functor[Parser], A: Alternative[Parser]): Parser[A \/ B] =
       A.or(F.map(p)(Left(_)), F.map(other)(Right(_)))
 
+    def || (other: => Parser[A])(implicit A: Alternative[Parser]): Parser[A] =
+      A.or(p, other)
+
     def ∘ [B](iso: PIso[A, B]): Parser[B] =
       p(_).flatMap { case (rest, v) => iso.to(v).fold[Result[B]](Left(()))(b => Right(rest -> b)) }
+
+    def many(implicit F: Applicative[Parser], A: Alternative[Parser]): Parser[List[A]] = {
+      import scalaz.Scalaz.{ applicativeApply, applyFunctor }
+      lazy val step: Parser[List[A]] = (pure(()) \/ (p /\ delay(step))) ∘ list
+      step
+    }
   }
 }

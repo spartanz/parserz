@@ -2,11 +2,15 @@ package scalaz.parsers
 
 import org.specs2.mutable.Specification
 import scalaz.parsers.Simplest.Parsers
-import scalaz.parsers.Simplest.Syntax.{ Composition, Number }
+import scalaz.parsers.Simplest.Syntax.{ Number, Sum }
 
 class SimplestSpec extends Specification {
 
   "Simplest parser" should {
+    "not parse empty input" in {
+      parse("") must_=== Left(())
+    }
+
     "parse a digit into a literal" in {
       parse("5") must_=== Right(Nil -> Number(5))
     }
@@ -23,8 +27,12 @@ class SimplestSpec extends Specification {
       parse("+") must_=== Left(())
     }
 
-    "parse sum as expression" in {
-      parse("5+5") must_=== Right(Nil -> Composition(Number(5), Number(5)))
+    "parse sum of 2 numbers" in {
+      parse("5+6") must_=== Right(Nil -> Sum(Number(5), Number(6)))
+    }
+
+    "parse sum of 3 numbers" in {
+      parse("5+6+7") must_=== Right(Nil -> Sum(Sum(Number(5), Number(6)), Number(7)))
     }
   }
 
