@@ -57,6 +57,8 @@ object Simplest {
   type PFunction[A, B] = A => Option[B]
   type PIso[A, B]      = Iso[Option, Id, A, B]
 
+  object PIso extends ProductIso[Option, Id]
+
   implicit val categoryOfTotalFunctions: Category[TFunction] = instanceOf(
     new CategoryClass[TFunction] {
       override def id[A]: TFunction[A, A] = identity
@@ -85,7 +87,7 @@ object Simplest {
 
   object Parsers {
     import Combinators._
-    import Iso._
+    import PIso._
     import IsoInstances._
     import ScalazInstances._
     import Syntax._
@@ -108,7 +110,7 @@ object Simplest {
       integer ∘ apply(Number, _.value)
 
     val composition: Parser[Composition] =
-      (number /\ plus /\ number) ∘ (~associate[Option, Id, Number, Char, Number] >>> flatten >>> apply(
+      (number /\ plus /\ number) ∘ (~associate[Number, Char, Number] >>> flatten >>> apply(
         { case (n1, _, n2) => Composition(n1, n2) },
         c => (c.n1, '+', c.n2)
       ))

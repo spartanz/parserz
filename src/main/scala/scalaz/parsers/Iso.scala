@@ -23,9 +23,24 @@ trait Iso[F[_], G[_], A, B] { self =>
   )(implicit C1: Category[UFV], C2: Category[UGV]): Iso[F, G, C, B] = that >>> self
 }
 
-object Iso {
+trait ProductIso[F[_], G[_]] {
 
-  def associate[F[_], G[_], A, B, C](
+  type ⓧ[A, B] = (A, B)
+  type Id      = Unit
+
+  def unitL[A](implicit F: Applicative[F], G: Applicative[G]): Iso[F, G, A, Id ⓧ A] =
+    new Iso[F, G, A, Id ⓧ A] {
+      override def to: UFV[A, Id ⓧ A]   = a => F.pure(((), a))
+      override def from: UGV[Id ⓧ A, A] = { case (_, a) => G.pure(a) }
+    }
+
+  def unitR[A](implicit F: Applicative[F], G: Applicative[G]): Iso[F, G, A, A ⓧ Id] =
+    new Iso[F, G, A, A ⓧ Id] {
+      override def to: UFV[A, A ⓧ Id]   = a => F.pure((a, ()))
+      override def from: UGV[A ⓧ Id, A] = { case (a, _) => G.pure(a) }
+    }
+
+  def associate[A, B, C](
     implicit F: Applicative[F],
     G: Applicative[G]
   ): Iso[F, G, (A, (B, C)), ((A, B), C)] =
@@ -38,7 +53,7 @@ object Iso {
       }
     }
 
-  def flatten[F[_], G[_], A, B, C](
+  def flatten[A, B, C](
     implicit F: Applicative[F],
     G: Applicative[G]
   ): Iso[F, G, (A, (B, C)), (A, B, C)] =
@@ -131,16 +146,6 @@ object Combinators {
 
         override def from: UGV[(B, A), (A, B)] = {
           case (b, a) => AG.pure(a -> b)
-        }
-      }
-
-    def unit(implicit AF: Applicative[F], AG: Applicative[G]): Iso[F, G, A, (A, Unit)] =
-      new Iso[F, G, A, (A, Unit)] {
-        override def to: UFV[A, (A, Unit)] =
-          a => AF.pure((a, ()))
-
-        override def from: UGV[(A, Unit), A] = {
-          case (a, _) => AG.pure(a)
         }
       }
   }

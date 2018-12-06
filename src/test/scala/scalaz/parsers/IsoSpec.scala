@@ -8,6 +8,7 @@ class IsoSpec extends Specification {
   private type Id[A]      = A
   private type TFun[A, B] = A => Id[B]
   private type TIso[A, B] = Iso[Id, Id, A, B]
+  private object TIso extends ProductIso[Id, Id]
 
   implicit private val funCategory: Category[TFun] = instanceOf(
     new CategoryClass[TFun] {
@@ -24,12 +25,12 @@ class IsoSpec extends Specification {
     }
   )
 
-  private def unitL[A](a: A): TIso[Unit, A] = new TIso[Unit, A] {
+  private def ignoreL[A](a: A): TIso[Unit, A] = new TIso[Unit, A] {
     def to: UFV[Unit, A]   = _ => a
     def from: UGV[A, Unit] = _ => ()
   }
 
-  private def unitR[A](a: A): TIso[A, Unit] = new TIso[A, Unit] {
+  private def ignoreR[A](a: A): TIso[A, Unit] = new TIso[A, Unit] {
     def to: UFV[A, Unit]   = _ => ()
     def from: UGV[Unit, A] = _ => a
   }
@@ -39,17 +40,23 @@ class IsoSpec extends Specification {
       .and(iso.from(b) must_=== a)
       .and(iso.from(iso.to(a)) must_=== a)
 
+  import TIso._
+
   "Constructing Iso" >> {
+    "via unit" in {
+      verify(unitL[Int], 1, ((), 1))
+      verify(unitR[Int], 2, (2, ()))
+    }
     "via associate" in {
       verify(
-        Iso.associate[Id, Id, Int, Long, String],
+        associate[Int, Long, String],
         (1, (2L, "s")),
         ((1, 2L), "s")
       )
     }
     "via flatten" in {
       verify(
-        Iso.flatten[Id, Id, Int, Long, String],
+        flatten[Int, Long, String],
         (1, (2L, "s")),
         (1, 2L, "s")
       )
@@ -57,25 +64,33 @@ class IsoSpec extends Specification {
   }
 
   "Transforming Iso" >> {
+    "via unit" in {
+      val iso1: TIso[Unit, Int] = ignoreL(5)
+
+      verify(iso1 >>> unitL, (), ((), 5))
+      verify(iso1 >>> unitR, (), (5, ()))
+    }
+
     "via associate" in {
-      val iso1: TIso[Unit, (Int, (Long, String))] = unitL((1, (2L, "s")))
-      val iso2: TIso[Unit, ((Int, Long), String)] = iso1 >>> Iso.associate
+      val iso1: TIso[Unit, (Int, (Long, String))] = ignoreL((1, (2L, "s")))
+      val iso2: TIso[Unit, ((Int, Long), String)] = iso1 >>> associate
 
       verify(iso2, (), ((1, 2L), "s"))
 
-      val iso3: TIso[((Int, Long), String), Unit] = unitR(((1, 2L), "s"))
-      val iso4: TIso[(Int, (Long, String)), Unit] = iso3 <<< Iso.associate
+      val iso3: TIso[((Int, Long), String), Unit] = ignoreR(((1, 2L), "s"))
+      val iso4: TIso[(Int, (Long, String)), Unit] = iso3 <<< associate
 
       verify(iso4, (1, (2L, "s")), ())
     }
+
     "via flatten" in {
-      val iso1: TIso[Unit, (Int, (Long, String))] = unitL((1, (2L, "s")))
-      val iso2: TIso[Unit, (Int, Long, String)]   = iso1 >>> Iso.flatten
+      val iso1: TIso[Unit, (Int, (Long, String))] = ignoreL((1, (2L, "s")))
+      val iso2: TIso[Unit, (Int, Long, String)]   = iso1 >>> flatten
 
       verify(iso2, (), (1, 2L, "s"))
 
-      val iso3: TIso[(Int, Long, String), Unit]   = unitR((1, 2L, "s"))
-      val iso4: TIso[(Int, (Long, String)), Unit] = iso3 <<< Iso.flatten
+      val iso3: TIso[(Int, Long, String), Unit]   = ignoreR((1, 2L, "s"))
+      val iso4: TIso[(Int, (Long, String)), Unit] = iso3 <<< flatten
 
       verify(iso4, (1, (2L, "s")), ())
     }
