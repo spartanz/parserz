@@ -75,7 +75,7 @@ object Simplest {
 
   object Syntax {
     sealed trait Expression
-    case class Number(value: Int)                  extends Expression
+    case class Constant(value: Int)                extends Expression
     case class Sum(e1: Expression, e2: Expression) extends Expression
   }
 
@@ -84,7 +84,7 @@ object Simplest {
     def delay[A](pa: => Parser[A]): Parser[A] =
       pa(_)
 
-    def pure[A](a: A)(implicit F: Applicative[Parser]): Parser[A] =
+    def lift[A](a: A)(implicit F: Applicative[Parser]): Parser[A] =
       F.pure(a)
   }
 
@@ -107,12 +107,12 @@ object Simplest {
     val integer: Parser[Int] =
       digit ∘ apply(_.toString.toInt, _.toString.head)
 
-    val number: Parser[Number] =
-      integer ∘ apply(Number, _.value)
+    val constant: Parser[Constant] =
+      integer ∘ apply(Constant, _.value)
 
-    val numberIso: PIso[Number, Expression] = unsafe(
-      { case a             => a },
-      { case n @ Number(_) => n }
+    val constantIso: PIso[Constant, Expression] = unsafe(
+      { case a               => a },
+      { case n @ Constant(_) => n }
     )
 
     val sumIso: PIso[Expression /\ (Char /\ Expression), Expression] = unsafe(
@@ -120,14 +120,14 @@ object Simplest {
       { case Sum(e1, e2)   => e1 -> ('+' -> e2) }
     )
 
-    val expression0: Parser[Expression] =
-      number ∘ numberIso
+    val case0: Parser[Expression] =
+      constant ∘ constantIso
 
-    val expression1: Parser[Expression] =
-      (expression0 /\ (plus /\ expression0).many) ∘ foldL(sumIso)
+    val case1: Parser[Expression] =
+      (case0 /\ (plus /\ case0).many) ∘ foldL(sumIso)
 
     lazy val expression: Parser[Expression] =
-      expression1
+      case1
   }
 
   object IsoInstances {
@@ -163,7 +163,7 @@ object Simplest {
       { case x :: xs => (x, xs) }
     )
 
-    def list[A]: PIso[Unit \/ (A /\ List[A]), List[A]] = unsafe(
+    def list[A]: PIso[Unit \/ (A /\ List[A]), List[A]] = apply(
       {
         case Left(_)        => Nil
         case Right((a, as)) => a :: as
@@ -220,7 +220,7 @@ object Simplest {
 
     def many(implicit F: Applicative[Parser], A: Alternative[Parser]): Parser[List[A]] = {
       import scalaz.Scalaz.{ applicativeApply, applyFunctor }
-      lazy val step: Parser[List[A]] = (pure(()) \/ (p /\ delay(step))) ∘ list
+      lazy val step: Parser[List[A]] = (lift(()) \/ (p /\ delay(step))) ∘ list
       step
     }
   }
