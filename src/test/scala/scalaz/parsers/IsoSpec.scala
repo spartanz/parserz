@@ -43,6 +43,10 @@ class IsoSpec extends Specification {
   import TIso._
 
   "Constructing Iso" >> {
+    "via lift" in {
+      verify(lift[Int, Int](_ + 1, _ - 1), 3, 4)
+      verify(liftF[Int, Int](_ + 1, _ - 1), 3, 4)
+    }
     "via unit" in {
       verify(unitL[Int], 1, ((), 1))
       verify(unitR[Int], 2, (2, ()))
@@ -64,9 +68,14 @@ class IsoSpec extends Specification {
   }
 
   "Transforming Iso" >> {
+    "via lift" in {
+      val iso1: TIso[Unit, Int] = ignoreL(5)
+      verify(iso1 >>> lift[Int, Int](_ + 1, _ - 1), (), 6)
+      verify(iso1 >>> liftF[Int, Int](_ + 1, _ - 1), (), 6)
+    }
+
     "via unit" in {
       val iso1: TIso[Unit, Int] = ignoreL(5)
-
       verify(iso1 >>> unitL, (), ((), 5))
       verify(iso1 >>> unitR, (), (5, ()))
     }

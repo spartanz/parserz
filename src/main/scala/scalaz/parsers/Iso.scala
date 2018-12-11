@@ -28,6 +28,21 @@ trait ProductIso[F[_], G[_]] {
   type ⓧ[A, B] = (A, B)
   type Id      = Unit
 
+  def lift[A, B](
+    ab: A => B,
+    ba: B => A
+  )(implicit F: Applicative[F], G: Applicative[G]): Iso[F, G, A, B] =
+    liftF(
+      ab.andThen(F.pure),
+      ba.andThen(G.pure)
+    )
+
+  def liftF[A, B](ab: A => F[B], ba: B => G[A]): Iso[F, G, A, B] =
+    new Iso[F, G, A, B] {
+      override def to: UFV[A, B]   = ab
+      override def from: UGV[B, A] = ba
+    }
+
   def unitL[A](implicit F: Applicative[F], G: Applicative[G]): Iso[F, G, A, Id ⓧ A] =
     new Iso[F, G, A, Id ⓧ A] {
       override def to: UFV[A, Id ⓧ A]   = a => F.pure(((), a))
