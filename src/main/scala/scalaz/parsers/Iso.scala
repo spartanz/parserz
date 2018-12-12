@@ -23,10 +23,13 @@ trait Iso[F[_], G[_], A, B] { self =>
   )(implicit C1: Category[UFV], C2: Category[UGV]): Iso[F, G, C, B] = that >>> self
 }
 
-trait ProductIso[F[_], G[_]] {
+trait IsoSyntax[F[_], G[_]] {
 
-  type ⓧ[A, B] = (A, B)
-  type Id      = Unit
+  def id[A](implicit F: Applicative[F], G: Applicative[G]): Iso[F, G, A, A] =
+    new Iso[F, G, A, A] {
+      override def to: UFV[A, A]   = F.pure
+      override def from: UGV[A, A] = G.pure
+    }
 
   def lift[A, B](
     ab: A => B,
@@ -42,6 +45,12 @@ trait ProductIso[F[_], G[_]] {
       override def to: UFV[A, B]   = ab
       override def from: UGV[B, A] = ba
     }
+}
+
+trait ProductIso[F[_], G[_]] extends IsoSyntax[F, G] {
+
+  type ⓧ[A, B] = (A, B)
+  type Id      = Unit
 
   def unitL[A](implicit F: Applicative[F], G: Applicative[G]): Iso[F, G, A, Id ⓧ A] =
     new Iso[F, G, A, Id ⓧ A] {
@@ -115,24 +124,6 @@ object Combinators {
         override def from: UGV[(B, B2), (A, A2)] = {
           case (b, b2) => AG.ap(ab.from(b))(AG.map(other.from(b2))(a2 => (a: A) => (a, a2)))
         }
-      }
-
-    def liftA(implicit AF: Applicative[F], AG: Applicative[G]): Iso[F, G, A, A] =
-      new Iso[F, G, A, A] {
-        override def to: UFV[A, A] =
-          a => AF.ap(AF.pure(a))(AF.pure[A => A](identity))
-
-        override def from: UGV[A, A] =
-          a => AG.ap(AG.pure(a))(AG.pure[A => A](identity))
-      }
-
-    def liftB(implicit AF: Applicative[F], AG: Applicative[G]): Iso[F, G, B, B] =
-      new Iso[F, G, B, B] {
-        override def to: UFV[B, B] =
-          b => AF.ap(AF.pure(b))(AF.pure[B => B](identity))
-
-        override def from: UGV[B, B] =
-          a => AG.ap(AG.pure(a))(AG.pure[B => B](identity))
       }
 
     def unitA(a: A)(implicit AF: Applicative[F], AG: Applicative[G]): Iso[F, G, A, Unit] =

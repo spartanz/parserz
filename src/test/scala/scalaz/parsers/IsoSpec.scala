@@ -43,14 +43,20 @@ class IsoSpec extends Specification {
   import TIso._
 
   "Constructing Iso" >> {
+    "via id" in {
+      verify(id[Int], 2, 2)
+    }
+
     "via lift" in {
       verify(lift[Int, Int](_ + 1, _ - 1), 3, 4)
       verify(liftF[Int, Int](_ + 1, _ - 1), 3, 4)
     }
+
     "via unit" in {
       verify(unitL[Int], 1, ((), 1))
       verify(unitR[Int], 2, (2, ()))
     }
+
     "via associate" in {
       verify(
         associate[Int, Long, String],
@@ -58,6 +64,7 @@ class IsoSpec extends Specification {
         ((1, 2L), "s")
       )
     }
+
     "via flatten" in {
       verify(
         flatten[Int, Long, String],
@@ -68,6 +75,13 @@ class IsoSpec extends Specification {
   }
 
   "Transforming Iso" >> {
+    "via id" in {
+      val iso1: TIso[Unit, Int] = ignoreL(5)
+      val iso2: TIso[Int, Unit] = ignoreR(5)
+      verify(iso1 >>> id[Int], (), 5)
+      verify(iso2 <<< id[Int], 5, ())
+    }
+
     "via lift" in {
       val iso1: TIso[Unit, Int] = ignoreL(5)
       verify(iso1 >>> lift[Int, Int](_ + 1, _ - 1), (), 6)

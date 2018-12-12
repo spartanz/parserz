@@ -131,11 +131,6 @@ object Simplest {
       def from: UGV[A, A] = to
     }
 
-    def id[A]: PIso[A, A] = new PIso[A, A] {
-      def to: UFV[A, A]   = Some(_)
-      def from: UGV[A, A] = to
-    }
-
     def unsafe[A, B](ab: PartialFunction[A, B], ba: PartialFunction[B, A]): PIso[A, B] =
       liftF(ab.lift, ba.lift)
 
@@ -171,8 +166,6 @@ object Simplest {
         def from: UGV[A, A] = a => Some(step(iso.from, a))
       }
     }
-
-    import PIso._
 
     def foldL[A, B](iso: PIso[A ⓧ B, A]): PIso[A ⓧ List[B], A] = {
       import Combinators._
