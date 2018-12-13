@@ -1,14 +1,14 @@
 package scalaz.parsers
 
 import org.specs2.mutable.Specification
+import scalaz.Scalaz.Id
 import scalaz.tc._
 
 class IsoSpec extends Specification {
 
-  private type Id[A]      = A
   private type TFun[A, B] = A => Id[B]
   private type TIso[A, B] = Iso[Id, Id, A, B]
-  private object TIso extends ProductIso[Id, Id]
+  private object TIso extends IsoClass[Id, Id]
 
   implicit private val funCategory: Category[TFun] = instanceOf(
     new CategoryClass[TFun] {
@@ -40,9 +40,10 @@ class IsoSpec extends Specification {
       .and(iso.from(b) must_=== a)
       .and(iso.from(iso.to(a)) must_=== a)
 
-  import TIso._
-
   "Constructing Iso" >> {
+    import TIso.Product._
+    import TIso._
+
     "via id" in {
       verify(id[Int], 2, 2)
     }
@@ -75,6 +76,9 @@ class IsoSpec extends Specification {
   }
 
   "Transforming Iso" >> {
+    import TIso.Product._
+    import TIso._
+
     "via id" in {
       val iso1: TIso[Unit, Int] = ignoreL(5)
       val iso2: TIso[Int, Unit] = ignoreR(5)
@@ -116,6 +120,16 @@ class IsoSpec extends Specification {
       val iso4: TIso[(Int, (Long, String)), Unit] = iso3 <<< flatten
 
       verify(iso4, (1, (2L, "s")), ())
+    }
+  }
+
+  "Combinators" >> {
+    import TIso._
+
+    "list" in {
+      verify(list[Int], Left(()), Nil)
+      verify(list[Int], Right((1, Nil)), List(1))
+      verify(list[Int], Right((2, List(1))), List(2, 1))
     }
   }
 }

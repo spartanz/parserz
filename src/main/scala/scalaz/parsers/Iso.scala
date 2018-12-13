@@ -23,7 +23,7 @@ trait Iso[F[_], G[_], A, B] { self =>
   )(implicit C1: Category[UFV], C2: Category[UGV]): Iso[F, G, C, B] = that >>> self
 }
 
-trait IsoSyntax[F[_], G[_]] {
+trait IsoClass[F[_], G[_]] extends IsoInstances0[F, G] {
 
   def id[A](implicit F: Applicative[F], G: Applicative[G]): Iso[F, G, A, A] =
     new Iso[F, G, A, A] {
@@ -45,50 +45,67 @@ trait IsoSyntax[F[_], G[_]] {
       override def to: UFV[A, B]   = ab
       override def from: UGV[B, A] = ba
     }
+
+  object Product {
+
+    type ⓧ[A, B] = (A, B)
+    type Id      = Unit
+
+    def unitL[A](implicit F: Applicative[F], G: Applicative[G]): Iso[F, G, A, Id ⓧ A] =
+      new Iso[F, G, A, Id ⓧ A] {
+        override def to: UFV[A, Id ⓧ A]   = a => F.pure(((), a))
+        override def from: UGV[Id ⓧ A, A] = { case (_, a) => G.pure(a) }
+      }
+
+    def unitR[A](implicit F: Applicative[F], G: Applicative[G]): Iso[F, G, A, A ⓧ Id] =
+      new Iso[F, G, A, A ⓧ Id] {
+        override def to: UFV[A, A ⓧ Id]   = a => F.pure((a, ()))
+        override def from: UGV[A ⓧ Id, A] = { case (a, _) => G.pure(a) }
+      }
+
+    def associate[A, B, C](
+      implicit F: Applicative[F],
+      G: Applicative[G]
+    ): Iso[F, G, (A, (B, C)), ((A, B), C)] =
+      new Iso[F, G, (A, (B, C)), ((A, B), C)] {
+        override def to: UFV[(A, (B, C)), ((A, B), C)] = {
+          case (a, (b, c)) => F.pure(((a, b), c))
+        }
+        override def from: UGV[((A, B), C), (A, (B, C))] = {
+          case ((a, b), c) => G.pure((a, (b, c)))
+        }
+      }
+
+    def flatten[A, B, C](
+      implicit F: Applicative[F],
+      G: Applicative[G]
+    ): Iso[F, G, (A, (B, C)), (A, B, C)] =
+      new Iso[F, G, (A, (B, C)), (A, B, C)] {
+        override def to: UFV[(A, (B, C)), (A, B, C)] = {
+          case (a, (b, c)) => F.pure((a, b, c))
+        }
+        override def from: UGV[(A, B, C), (A, (B, C))] = {
+          case (a, b, c) => G.pure((a, (b, c)))
+        }
+      }
+  }
 }
 
-trait ProductIso[F[_], G[_]] extends IsoSyntax[F, G] {
+trait IsoInstances0[F[_], G[_]] {
+  self: IsoClass[F, G] =>
 
-  type ⓧ[A, B] = (A, B)
-  type Id      = Unit
-
-  def unitL[A](implicit F: Applicative[F], G: Applicative[G]): Iso[F, G, A, Id ⓧ A] =
-    new Iso[F, G, A, Id ⓧ A] {
-      override def to: UFV[A, Id ⓧ A]   = a => F.pure(((), a))
-      override def from: UGV[Id ⓧ A, A] = { case (_, a) => G.pure(a) }
-    }
-
-  def unitR[A](implicit F: Applicative[F], G: Applicative[G]): Iso[F, G, A, A ⓧ Id] =
-    new Iso[F, G, A, A ⓧ Id] {
-      override def to: UFV[A, A ⓧ Id]   = a => F.pure((a, ()))
-      override def from: UGV[A ⓧ Id, A] = { case (a, _) => G.pure(a) }
-    }
-
-  def associate[A, B, C](
+  def list[A](
     implicit F: Applicative[F],
     G: Applicative[G]
-  ): Iso[F, G, (A, (B, C)), ((A, B), C)] =
-    new Iso[F, G, (A, (B, C)), ((A, B), C)] {
-      override def to: UFV[(A, (B, C)), ((A, B), C)] = {
-        case (a, (b, c)) => F.pure(((a, b), c))
-      }
-      override def from: UGV[((A, B), C), (A, (B, C))] = {
-        case ((a, b), c) => G.pure((a, (b, c)))
-      }
+  ): Iso[F, G, Unit \/ (A /\ List[A]), List[A]] = lift(
+    {
+      case Left(_)        => Nil
+      case Right((a, as)) => a :: as
+    }, {
+      case Nil     => Left(())
+      case a :: as => Right((a, as))
     }
-
-  def flatten[A, B, C](
-    implicit F: Applicative[F],
-    G: Applicative[G]
-  ): Iso[F, G, (A, (B, C)), (A, B, C)] =
-    new Iso[F, G, (A, (B, C)), (A, B, C)] {
-      override def to: UFV[(A, (B, C)), (A, B, C)] = {
-        case (a, (b, c)) => F.pure((a, b, c))
-      }
-      override def from: UGV[(A, B, C), (A, (B, C))] = {
-        case (a, b, c) => G.pure((a, (b, c)))
-      }
-    }
+  )
 }
 
 object Combinators {

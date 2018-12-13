@@ -5,9 +5,6 @@ import scalaz.tc._
 
 object Simplest {
 
-  type /\[A, B] = (A, B)
-  type \/[A, B] = Either[A, B]
-
   type Error      = Unit
   type Result[A]  = Error \/ (List[Char], A)
   type Parser[A]  = List[Char] => Result[A]
@@ -62,7 +59,7 @@ object Simplest {
 
   type PFunction[A, B] = A => Option[B]
   type PIso[A, B]      = Iso[Option, Option, A, B]
-  object PIso extends ProductIso[Option, Option]
+  object PIso extends IsoClass[Option, Option]
 
   object Syntax {
     sealed trait Expression
@@ -70,17 +67,17 @@ object Simplest {
     case class Sum(e1: Expression, e2: Expression) extends Expression
   }
 
-  object Parser {
-
-    def delay[A](pa: => Parser[A]): Parser[A] =
+  object Parser extends ParserSyntax[Parser] with ParserIsoSyntax[Parser, Option, Option] {
+    override val iso: IsoClass[Option, Option] =
+      PIso
+    override def delay[A](pa: => Parser[A]): Parser[A] =
       pa(_)
-
-    def lift[A](a: A)(implicit F: Applicative[Parser]): Parser[A] =
-      F.pure(a)
+    override def isoMap[A, B](pa: Parser[A])(iso: PIso[A, B]): Parser[B] =
+      pa(_).flatMap { case (rest, v) => iso.to(v).fold[Result[B]](Left(()))(b => Right(rest -> b)) }
   }
 
   object Parsers {
-    import PIso._
+    import Parser._
     import IsoInstances._
     import ScalazInstances._
     import Syntax._
@@ -97,10 +94,10 @@ object Simplest {
       char ∘ subset(_ == '+')
 
     val integer: Parser[Int] =
-      digit ∘ lift(_.toString.toInt, _.toString.head)
+      digit ∘ iso.lift(_.toString.toInt, _.toString.head)
 
     val constant: Parser[Constant] =
-      integer ∘ lift(Constant, _.value)
+      integer ∘ iso.lift(Constant, _.value)
 
     val constantIso: PIso[Constant, Expression] = unsafe(
       { case a               => a },
@@ -124,7 +121,7 @@ object Simplest {
 
   object IsoInstances {
     import PIso._
-    import ScalazInstances._
+    import PIso.Product._
 
     def subset[A](p: A => Boolean): PIso[A, A] = new PIso[A, A] {
       def to: UFV[A, A]   = Some(_).filter(p)
@@ -142,16 +139,6 @@ object Simplest {
     def nel[A]: PIso[(A, List[A]), List[A]] = unsafe(
       { case (x, xs) => x :: xs },
       { case x :: xs => (x, xs) }
-    )
-
-    def list[A]: PIso[Unit \/ (A /\ List[A]), List[A]] = lift(
-      {
-        case Left(_)        => Nil
-        case Right((a, as)) => a :: as
-      }, {
-        case Nil     => Left(())
-        case a :: as => Right((a, as))
-      }
     )
 
     def iterate[A](iso: PIso[A, A]): PIso[A, A] = {
@@ -176,31 +163,6 @@ object Simplest {
         first >>> associate >>> app
       }
       iterate(step) >>> (id[A] ⓧ ~nil[B]) >>> ~unitR[A]
-    }
-  }
-
-  implicit class ParserOps[A](p: Parser[A]) {
-    import Parser._
-    import IsoInstances._
-
-    def /\ [B](other: Parser[B])(implicit F: Applicative[Parser]): Parser[A /\ B] =
-      F.ap(p)(F.ap(other)(F.pure[B => A => A /\ B](b => a => (a, b))))
-
-    def \/ [B](
-      other: => Parser[B]
-    )(implicit F: Functor[Parser], A: Alternative[Parser]): Parser[A \/ B] =
-      A.or(F.map(p)(Left(_)), F.map(other)(Right(_)))
-
-    def || (other: => Parser[A])(implicit A: Alternative[Parser]): Parser[A] =
-      A.or(p, other)
-
-    def ∘ [B](iso: PIso[A, B]): Parser[B] =
-      p(_).flatMap { case (rest, v) => iso.to(v).fold[Result[B]](Left(()))(b => Right(rest -> b)) }
-
-    def many(implicit F: Applicative[Parser], A: Alternative[Parser]): Parser[List[A]] = {
-      import scalaz.Scalaz.{ applicativeApply, applyFunctor }
-      lazy val step: Parser[List[A]] = (lift(()) \/ (p /\ delay(step))) ∘ list
-      step
     }
   }
 }
