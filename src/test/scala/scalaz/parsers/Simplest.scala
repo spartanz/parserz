@@ -1,6 +1,5 @@
 package scalaz.parsers
 
-import scalaz.Scalaz.Id
 import scalaz.data.{ ~>, ∀ }
 import scalaz.tc._
 
@@ -16,14 +15,6 @@ object Simplest {
 
   object ScalazInstances {
     import scalaz.Scalaz.{ applicativeApply, applyFunctor, monadApplicative }
-
-    implicit val applicativeId: Applicative[Id] = instanceOf(
-      new ApplicativeClass[Id] {
-        def pure[A](a: A): Id[A]                      = a
-        def ap[A, B](fa: Id[A])(f: Id[A => B]): Id[B] = f(fa)
-        def map[A, B](fa: Id[A])(f: A => B): Id[B]    = f(fa)
-      }
-    )
 
     implicit val applicativeOption: Applicative[Option] =
       monadApplicative[Option](implicitly)
@@ -89,6 +80,7 @@ object Simplest {
   }
 
   object Parsers {
+    import PIso._
     import IsoInstances._
     import ScalazInstances._
     import Syntax._
@@ -105,10 +97,10 @@ object Simplest {
       char ∘ subset(_ == '+')
 
     val integer: Parser[Int] =
-      digit ∘ apply(_.toString.toInt, _.toString.head)
+      digit ∘ lift(_.toString.toInt, _.toString.head)
 
     val constant: Parser[Constant] =
-      integer ∘ apply(Constant, _.value)
+      integer ∘ lift(Constant, _.value)
 
     val constantIso: PIso[Constant, Expression] = unsafe(
       { case a               => a },
@@ -131,27 +123,16 @@ object Simplest {
   }
 
   object IsoInstances {
+    import PIso._
+    import ScalazInstances._
 
     def subset[A](p: A => Boolean): PIso[A, A] = new PIso[A, A] {
       def to: UFV[A, A]   = Some(_).filter(p)
       def from: UGV[A, A] = to
     }
 
-    def id[A]: PIso[A, A] = new PIso[A, A] {
-      def to: UFV[A, A]   = Some(_)
-      def from: UGV[A, A] = to
-    }
-
-    def apply[A, B](ab: A => B, ba: B => A): PIso[A, B] = new PIso[A, B] {
-      def to: UFV[A, B]   = Some(_).map(ab)
-      def from: UGV[B, A] = Some(_).map(ba)
-    }
-
     def unsafe[A, B](ab: PartialFunction[A, B], ba: PartialFunction[B, A]): PIso[A, B] =
-      new PIso[A, B] {
-        def to: UFV[A, B]   = ab.lift
-        def from: UGV[B, A] = ba.lift
-      }
+      liftF(ab.lift, ba.lift)
 
     def nil[A]: PIso[Unit, List[A]] = unsafe(
       { case ()  => Nil },
@@ -163,7 +144,7 @@ object Simplest {
       { case x :: xs => (x, xs) }
     )
 
-    def list[A]: PIso[Unit \/ (A /\ List[A]), List[A]] = apply(
+    def list[A]: PIso[Unit \/ (A /\ List[A]), List[A]] = lift(
       {
         case Left(_)        => Nil
         case Right((a, as)) => a :: as
@@ -185,8 +166,6 @@ object Simplest {
         def from: UGV[A, A] = a => Some(step(iso.from, a))
       }
     }
-
-    import PIso._
 
     def foldL[A, B](iso: PIso[A ⓧ B, A]): PIso[A ⓧ List[B], A] = {
       import Combinators._
