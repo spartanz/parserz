@@ -11,24 +11,14 @@ object Simplest {
   type Printer[A] = A => List[Char]
 
   object ScalazInstances {
-    import scalaz.Scalaz.{ applicativeApply, applyFunctor, monadApplicative }
+    import scalaz.Scalaz.monadApplicative
 
-    implicit val applicativeOption: Applicative[Option] =
-      monadApplicative[Option](implicitly)
-
-    implicit val applicativeParser: Applicative[Parser] = instanceOf(
-      new ApplicativeClass[Parser] {
-        override def pure[A](a: A): Parser[A] =
-          chars => Right(chars -> a)
-        override def ap[A, B](fa: Parser[A])(fab: Parser[A => B]): Parser[B] =
-          fa(_).flatMap { case (cs, a) => fab(cs).map { case (cs2, f) => cs2 -> f(a) } }
-        override def map[A, B](fa: Parser[A])(f: A => B): Parser[B] =
-          ap(fa)(pure(f))
+    implicit val productFunctorParser: ProductFunctor[Parser] = instanceOf(
+      new ProductFunctorClass[Parser] {
+        override def and[A, B](fa: Parser[A], fb: Parser[B]): Parser[A /\ B] =
+          fa(_).flatMap { case (cs1, a) => fb(cs1).map { case (cs2, b) => cs2 -> (a -> b) } }
       }
     )
-
-    implicit val functorParser: Functor[Parser] =
-      applyFunctor[Parser](applicativeApply[Parser](applicativeParser))
 
     implicit val alternativeParser: Alternative[Parser] = instanceOf(
       new AlternativeClass[Parser] {
@@ -42,6 +32,9 @@ object Simplest {
             }
       }
     )
+
+    implicit val applicativeOption: Applicative[Option] =
+      monadApplicative[Option](implicitly)
 
     implicit val OptionToOption: Option ~> Option =
       ∀.mk[Option ~> Option].from(identity)
@@ -67,18 +60,29 @@ object Simplest {
     case class Sum(e1: Expression, e2: Expression) extends Expression
   }
 
-  object Parser extends ParserSyntax[Parser] with ParserIsoSyntax[Parser, Option, Option] {
+  object Parser extends ParserSyntax[Parser, Option, Option] {
     override val iso: IsoClass[Option, Option] =
       PIso
-    override def delay[A](pa: => Parser[A]): Parser[A] =
-      pa(_)
+
+    override def lift[A](a: A): Parser[A] =
+      chars => Right(chars -> a)
+
+    override def left[A, B](pa: Parser[A]): Parser[A \/ B] =
+      pa(_).map { case (s1, a) => s1 -> Left(a) }
+
+    override def right[A, B](pb: Parser[B]): Parser[A \/ B] =
+      pb(_).map { case (s1, b) => s1 -> Right(b) }
+
     override def isoMap[A, B](pa: Parser[A])(iso: PIso[A, B]): Parser[B] =
       pa(_).flatMap { case (rest, v) => iso.to(v).fold[Result[B]](Left(()))(b => Right(rest -> b)) }
+
+    override def delay[A](pa: => Parser[A]): Parser[A] =
+      pa(_)
   }
 
   object Parsers {
-    import Parser._
     import IsoInstances._
+    import Parser._
     import ScalazInstances._
     import Syntax._
 
@@ -120,8 +124,8 @@ object Simplest {
   }
 
   object IsoInstances {
-    import PIso._
     import PIso.Product._
+    import PIso._
 
     def subset[A](p: A => Boolean): PIso[A, A] = new PIso[A, A] {
       def to: UFV[A, A]   = Some(_).filter(p)

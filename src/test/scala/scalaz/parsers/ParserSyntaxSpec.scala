@@ -7,36 +7,36 @@ class ParserSyntaxSpec extends Specification {
 
   private type Parser[A] = String => (String, List[A])
 
-  private object Parser extends ParserSyntax[Parser] with ParserIsoSyntax[Parser, Option, Option] {
+  private object Parser extends ParserSyntax[Parser, Option, Option] {
     override val iso: IsoClass[Option, Option] =
       new IsoClass[Option, Option] {}
-    override def delay[A](pa: => Parser[A]): Parser[A] =
-      pa(_)
+
+    override def lift[A](a: A): Parser[A] =
+      _ -> List(a)
+
+    override def left[A, B](pa: Parser[A]): Parser[A \/ B] =
+      s => pa(s) match { case (s1, as) => s1 -> as.map(Left(_)) }
+
+    override def right[A, B](pb: Parser[B]): Parser[A \/ B] =
+      s => pb(s) match { case (s1, bs) => s1 -> bs.map(Right(_)) }
+
     override def isoMap[A, B](pa: Parser[A])(iso: Iso[Option, Option, A, B]): Parser[B] =
       s => pa(s) match { case (s1, aa) => s1 -> aa.map(iso.to).collect { case Some(b) => b } }
+
+    override def delay[A](pa: => Parser[A]): Parser[A] =
+      pa(_)
   }
 
   private object Instances {
     import scalaz.Scalaz.monadApplicative
 
-    implicit val functorParser: Functor[Parser] = instanceOf(
-      new FunctorClass[Parser] {
-        override def map[A, B](fa: Parser[A])(f: A => B): Parser[B] =
-          s => fa(s) match { case (s1, aa) => s1 -> aa.map(f) }
-      }
-    )
-
-    implicit val applicativeParser: Applicative[Parser] = instanceOf(
-      new ApplicativeClass[Parser] {
-        override def pure[A](a: A): Parser[A] =
-          s => s -> List(a)
-        override def ap[A, B](fa: Parser[A])(fab: Parser[A => B]): Parser[B] = s => {
-          val (s1, aa) = fa(s)
-          val (s2, ff) = if (aa.nonEmpty) fab(s1) else s1 -> Nil
-          s2 -> ff.flatMap(aa.map(_))
+    implicit val productFunctorParser: ProductFunctor[Parser] = instanceOf(
+      new ProductFunctorClass[Parser] {
+        override def and[A, B](fa: Parser[A], fb: Parser[B]): Parser[A /\ B] = s => {
+          val (s1, as) = fa(s)
+          val (s2, bs) = if (as.nonEmpty) fb(s1) else s1 -> Nil
+          s2 -> as.zip(bs)
         }
-        override def map[A, B](fa: Parser[A])(f: A => B): Parser[B] =
-          functorParser.map(fa)(f)
       }
     )
 
@@ -98,22 +98,23 @@ class ParserSyntaxSpec extends Specification {
   }
 
   "combinators" >> {
+    def eq(c: Char): Char => Option[Char]            = Some(_).filter(_ == c)
+    def is(c: Char): Iso[Option, Option, Char, Char] = iso.liftF(eq(c), eq(c))
+
     "and (product)" in {
       (char /\ char).apply("a") must_=== (""  -> List())
       (char /\ char).apply("ab") must_=== ("" -> List('a' -> 'b'))
     }
     "or (coproduct)" in {
-      (char \/ char).apply("a") must_=== (""       -> List(Left('a'), Right('a')))
-      (char \/ char).apply("ab") must_=== ("b"     -> List(Left('a'), Right('a')))
-      (char.many \/ char).apply("ab") must_=== ("" -> List(Left(List('a', 'b'))))
-      (char \/ char.many).apply("ab") must_=== ("" -> List(Right(List('a', 'b'))))
+      (char \/ char).apply("a") must_=== (""                           -> List(Left('a'), Right('a')))
+      (char \/ char).apply("ab") must_=== ("b"                         -> List(Left('a'), Right('a')))
+      ((char ∘ is('a')) \/ (char ∘ is('b'))).apply("ab") must_=== ("b" -> List(Left('a')))
+      (char.many \/ char).apply("ab") must_=== (""                     -> List(Left(List('a', 'b'))))
+      (char \/ char.many).apply("ab") must_=== (""                     -> List(Right(List('a', 'b'))))
     }
     "or (alternative)" in {
-      (char || char).apply("") must_=== (""  -> Nil)
-      (char || char).apply("a") must_=== ("" -> List('a', 'a'))
-
-      def eq(c: Char): Char => Option[Char]            = Some(_).filter(_ == c)
-      def is(c: Char): Iso[Option, Option, Char, Char] = iso.liftF(eq(c), eq(c))
+      (char || char).apply("") must_=== (""                          -> Nil)
+      (char || char).apply("a") must_=== (""                         -> List('a', 'a'))
       ((char ∘ is('a')) || (char ∘ is('b'))).apply("a") must_=== ("" -> List('a'))
     }
   }
