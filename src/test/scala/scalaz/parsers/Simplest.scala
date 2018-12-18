@@ -8,7 +8,7 @@ object Simplest {
   type Error      = Unit
   type Result[A]  = Error \/ (List[Char], A)
   type Parser[A]  = List[Char] => Result[A]
-  type Printer[A] = A => List[Char]
+  type Printer[A] = A => String
 
   object ScalazInstances {
     import scalaz.Scalaz.monadApplicative
@@ -30,6 +30,24 @@ object Simplest {
               case (r1 @ Right((c1, _)), r2 @ Right((c2, _))) =>
                 if (c1.lengthCompare(c2.length) <= 0) r1 else r2
             }
+      }
+    )
+
+    implicit val productFunctorPrinter: ProductFunctor[Printer] = instanceOf(
+      new ProductFunctorClass[Printer] {
+        override def and[A, B](fa: Printer[A], fb: Printer[B]): Printer[(A, B)] = {
+          case (a, b) => fa(a) + fb(b)
+        }
+      }
+    )
+
+    implicit val alternativePrinter: Alternative[Printer] = instanceOf(
+      new AlternativeClass[Printer] {
+        override def or[A](f1: Printer[A], f2: => Printer[A]): Printer[A] = { a =>
+          val s1 = f1(a)
+          val s2 = f2(a)
+          if (s2.lengthCompare(s1.length) < 0) s1 else s2
+        }
       }
     )
 
@@ -101,31 +119,88 @@ object Simplest {
       digit ∘ iso.lift(_.toString.toInt, _.toString.head)
 
     val constant: Parser[Constant] =
-      integer ∘ iso.lift(Constant, _.value)
-
-    val constantIso: PIso[Constant, Expression] = unsafe(
-      { case a               => a },
-      { case n @ Constant(_) => n }
-    )
-
-    val sumIso: PIso[Expression /\ (Char /\ Expression), Expression] = unsafe(
-      { case (e1, (_, e2)) => Sum(e1, e2) },
-      { case Sum(e1, e2)   => e1 -> ('+' -> e2) }
-    )
+      integer ∘ constantIso
 
     val case0: Parser[Expression] =
-      constant ∘ constantIso
+      constant ∘ constantExpressionIso
 
     val case1: Parser[Expression] =
-      (case0 /\ (plus /\ case0).many) ∘ foldL(sumIso)
+      (case0 /\ (plus /\ case0).many) ∘ foldL(sumExpressionIso)
 
     lazy val expression: Parser[Expression] =
+      case1
+  }
+
+  object Printer extends ParserSyntax[Printer, Option, Option] {
+    override val iso: IsoClass[Option, Option] =
+      PIso
+
+    override def lift[A](a: A): Printer[A] =
+      _ => ""
+
+    override def left[A, B](pa: Printer[A]): Printer[A \/ B] = {
+      case Left(a)  => pa(a)
+      case Right(_) => ""
+    }
+
+    override def right[A, B](pb: Printer[B]): Printer[A \/ B] = {
+      case Left(_)  => ""
+      case Right(b) => pb(b)
+    }
+
+    override def isoMap[A, B](pa: Printer[A])(iso: PIso[A, B]): Printer[B] =
+      iso.from(_).fold("")(pa)
+
+    override def delay[A](pa: => Printer[A]): Printer[A] =
+      pa(_)
+  }
+
+  object Printers {
+    import IsoInstances._
+    import Printer._
+    import ScalazInstances._
+    import Syntax._
+
+    def char: Printer[Char] =
+      _.toString
+
+    def integer: Printer[Int] =
+      _.toString
+
+    def constant: Printer[Constant] =
+      integer ∘ constantIso
+
+    def plus: Printer[Char] =
+      char ∘ subset(_ == '+')
+
+    def case0: Printer[Expression] =
+      constant ∘ constantExpressionIso
+
+    def case1: Printer[Expression] =
+      (case0 /\ (plus /\ case0).many) ∘ foldL(sumExpressionIso)
+
+    def expression: Printer[Expression] =
       case1
   }
 
   object IsoInstances {
     import PIso.Product._
     import PIso._
+    import ScalazInstances._
+    import Syntax._
+
+    val constantIso: PIso[Int, Constant] =
+      lift(Constant, _.value)
+
+    val constantExpressionIso: PIso[Constant, Expression] = unsafe(
+      { case a               => a },
+      { case n @ Constant(_) => n }
+    )
+
+    val sumExpressionIso: PIso[Expression /\ (Char /\ Expression), Expression] = unsafe(
+      { case (e1, (_, e2)) => Sum(e1, e2) },
+      { case Sum(e1, e2)   => e1 -> ('+' -> e2) }
+    )
 
     def subset[A](p: A => Boolean): PIso[A, A] = new PIso[A, A] {
       def to: UFV[A, A]   = Some(_).filter(p)
