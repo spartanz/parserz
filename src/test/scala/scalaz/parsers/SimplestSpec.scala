@@ -1,8 +1,8 @@
 package scalaz.parsers
 
 import org.specs2.mutable.Specification
-import scalaz.parsers.Simplest.Syntax.{ Constant, Expression, Sum }
-import scalaz.parsers.Simplest.{ Parsers, Printers }
+import scalaz.parsers.Simplest.{ Parser, Printer }
+import scalaz.parsers.Simplest.Syntax._
 
 class SimplestSpec extends Specification {
 
@@ -36,21 +36,28 @@ class SimplestSpec extends Specification {
     }
   }
 
-  private def parse(s: String) =
-    Parsers.expression(s.toList)
+  import Simplest.ScalazInstances._
 
-  private def print(e: Expression) =
-    Printers.expression(e)
+  private val parser = Simplest.grammar[Parser](Parser)
+  private val print  = Simplest.grammar[Printer](Printer)
+
+  private def parse(s: String) = parser(s.toList)
 
   "Simplest printer" should {
     "print a constant" in {
       print(Constant(1)) must_=== "1"
-      print(Constant(23)) must_=== "23"
+    }
+    "not print a multi-digit number (not yet supported)" in {
+      print(Constant(23)) must_=== "2"
     }
     "print a sum" in {
       print(Sum(Constant(1), Constant(2))) must_=== "1+2"
       print(Sum(Sum(Constant(1), Constant(2)), Constant(3))) must_=== "1+2+3"
       print(Sum(Sum(Sum(Constant(1), Constant(2)), Constant(3)), Constant(4))) must_=== "1+2+3+4"
+    }
+    "not print an incorrectly composed expression" in {
+      print(Sum(Constant(1), Sum(Constant(2), Constant(3)))) must_=== "1+"
+      print(Sum(Sum(Constant(1), Constant(2)), Sum(Constant(3), Constant(4)))) must_=== "1+2+"
     }
   }
 }

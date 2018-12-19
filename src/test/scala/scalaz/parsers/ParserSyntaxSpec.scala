@@ -11,6 +11,9 @@ class ParserSyntaxSpec extends Specification {
     override val iso: IsoClass[Option, Option] =
       new IsoClass[Option, Option] {}
 
+    override def char: Parser[Char] =
+      s => s.headOption.fold("" -> List.empty[Char])(h => s.drop(1) -> List(h))
+
     override def lift[A](a: A): Parser[A] =
       _ -> List(a)
 

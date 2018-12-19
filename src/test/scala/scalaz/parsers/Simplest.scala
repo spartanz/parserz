@@ -78,9 +78,59 @@ object Simplest {
     case class Sum(e1: Expression, e2: Expression) extends Expression
   }
 
+  def grammar[P[_]: ProductFunctor: Alternative](
+    P: ParserSyntax[P, Option, Option]
+  ): P[Syntax.Expression] = {
+    import Syntax._
+    import P._
+    import IsoInstances._
+    import ScalazInstances._
+
+    val digit: P[Char] =
+      char ∘ subset(_.isDigit)
+
+    val plus: P[Char] =
+      char ∘ subset(_ == '+')
+
+    val integer: P[Int] =
+      digit ∘ iso.lift(_.toString.toInt, _.toString.head)
+
+    val constantIso: PIso[Int, Constant] =
+      iso.lift(Constant, _.value)
+
+    val constantExpressionIso: PIso[Constant, Expression] = unsafe(
+      { case a               => a },
+      { case n @ Constant(_) => n }
+    )
+
+    val sumExpressionIso: PIso[Expression /\ (Char /\ Expression), Expression] = unsafe(
+      { case (e1, (_, e2)) => Sum(e1, e2) },
+      { case Sum(e1, e2)   => e1 -> ('+' -> e2) }
+    )
+
+    val constant: P[Constant] =
+      integer ∘ constantIso
+
+    val case0: P[Expression] =
+      constant ∘ constantExpressionIso
+
+    val case1: P[Expression] =
+      (case0 /\ (plus /\ case0).many) ∘ foldL(sumExpressionIso)
+
+    lazy val expression: P[Expression] =
+      case1
+
+    expression
+  }
+
   object Parser extends ParserSyntax[Parser, Option, Option] {
     override val iso: IsoClass[Option, Option] =
       PIso
+
+    override def char: Parser[Char] = {
+      case head :: tail => Right(tail -> head)
+      case Nil          => Left(())
+    }
 
     override def lift[A](a: A): Parser[A] =
       chars => Right(chars -> a)
@@ -98,42 +148,12 @@ object Simplest {
       pa(_)
   }
 
-  object Parsers {
-    import IsoInstances._
-    import Parser._
-    import ScalazInstances._
-    import Syntax._
-
-    val char: Parser[Char] = {
-      case head :: tail => Right(tail -> head)
-      case Nil          => Left(())
-    }
-
-    val digit: Parser[Char] =
-      char ∘ subset(_.isDigit)
-
-    val plus: Parser[Char] =
-      char ∘ subset(_ == '+')
-
-    val integer: Parser[Int] =
-      digit ∘ iso.lift(_.toString.toInt, _.toString.head)
-
-    val constant: Parser[Constant] =
-      integer ∘ constantIso
-
-    val case0: Parser[Expression] =
-      constant ∘ constantExpressionIso
-
-    val case1: Parser[Expression] =
-      (case0 /\ (plus /\ case0).many) ∘ foldL(sumExpressionIso)
-
-    lazy val expression: Parser[Expression] =
-      case1
-  }
-
   object Printer extends ParserSyntax[Printer, Option, Option] {
     override val iso: IsoClass[Option, Option] =
       PIso
+
+    override def char: Printer[Char] =
+      _.toString
 
     override def lift[A](a: A): Printer[A] =
       _ => ""
@@ -155,52 +175,9 @@ object Simplest {
       pa(_)
   }
 
-  object Printers {
-    import IsoInstances._
-    import Printer._
-    import ScalazInstances._
-    import Syntax._
-
-    def char: Printer[Char] =
-      _.toString
-
-    def integer: Printer[Int] =
-      _.toString
-
-    def constant: Printer[Constant] =
-      integer ∘ constantIso
-
-    def plus: Printer[Char] =
-      char ∘ subset(_ == '+')
-
-    def case0: Printer[Expression] =
-      constant ∘ constantExpressionIso
-
-    def case1: Printer[Expression] =
-      (case0 /\ (plus /\ case0).many) ∘ foldL(sumExpressionIso)
-
-    def expression: Printer[Expression] =
-      case1
-  }
-
   object IsoInstances {
     import PIso.Product._
     import PIso._
-    import ScalazInstances._
-    import Syntax._
-
-    val constantIso: PIso[Int, Constant] =
-      lift(Constant, _.value)
-
-    val constantExpressionIso: PIso[Constant, Expression] = unsafe(
-      { case a               => a },
-      { case n @ Constant(_) => n }
-    )
-
-    val sumExpressionIso: PIso[Expression /\ (Char /\ Expression), Expression] = unsafe(
-      { case (e1, (_, e2)) => Sum(e1, e2) },
-      { case Sum(e1, e2)   => e1 -> ('+' -> e2) }
-    )
 
     def subset[A](p: A => Boolean): PIso[A, A] = new PIso[A, A] {
       def to: UFV[A, A]   = Some(_).filter(p)
