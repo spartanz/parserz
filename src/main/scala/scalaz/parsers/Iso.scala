@@ -140,6 +140,12 @@ trait IsoClass[F[_], G[_]] extends IsoInstances0[F, G] {
 trait IsoInstances0[F[_], G[_]] {
   self: IsoClass[F, G] =>
 
+  def ignore[A](a: A)(implicit F: Applicative[F], G: Applicative[G]): Iso[F, G, A, Unit] =
+    lift(_ => (), _ => a)
+
+  def create[A](a: A)(implicit F: Applicative[F], G: Applicative[G]): Iso[F, G, Unit, A] =
+    lift(_ => a, _ => ())
+
   def list[A](
     implicit F: Applicative[F],
     G: Applicative[G]
@@ -171,24 +177,6 @@ object Combinators {
       new Iso[F, G, A, B] {
         override def to: UFV[A, B]   = (a: A) => AF.or(ab.to(a), abOther.to(a))
         override def from: UGV[B, A] = (b: B) => AG.or(ab.from(b), abOther.from(b))
-      }
-
-    def unitA(a: A)(implicit AF: Applicative[F], AG: Applicative[G]): Iso[F, G, A, Unit] =
-      new Iso[F, G, A, Unit] {
-        override def to: UFV[A, Unit] =
-          a0 => AF.ap[A, Unit](AF.pure(a0))(AF.pure[A => Unit](_ => ()))
-
-        override def from: UGV[Unit, A] =
-          _ => AG.ap[Unit, A](AG.pure(()))(AG.pure[Unit => A](_ => a))
-      }
-
-    def unitB(b: B)(implicit AF: Applicative[F], AG: Applicative[G]): Iso[F, G, B, Unit] =
-      new Iso[F, G, B, Unit] {
-        override def to: UFV[B, Unit] =
-          b0 => AF.ap[B, Unit](AF.pure(b0))(AF.pure[B => Unit](_ => ()))
-
-        override def from: UGV[Unit, B] =
-          _ => AG.ap[Unit, B](AG.pure(()))(AG.pure[Unit => B](_ => b))
       }
   }
 }

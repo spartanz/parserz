@@ -28,16 +28,6 @@ class IsoSpec extends Specification {
 
   implicit private val IdToId: Id ~> Id = ∀.mk[Id ~> Id].from(identity)
 
-  private def ignoreL[A](a: A): TIso[Unit, A] = new TIso[Unit, A] {
-    def to: UFV[Unit, A]   = _ => a
-    def from: UGV[A, Unit] = _ => ()
-  }
-
-  private def ignoreR[A](a: A): TIso[A, Unit] = new TIso[A, Unit] {
-    def to: UFV[A, Unit]   = _ => ()
-    def from: UGV[Unit, A] = _ => a
-  }
-
   private def verify[A, B](iso: TIso[A, B], a: A, b: B) =
     (iso.to(a) must_=== b)
       .and(iso.from(b) must_=== a)
@@ -82,14 +72,17 @@ class IsoSpec extends Specification {
     "conjunction" >> {
       verify(iso1 /\ iso2, (0, 0), (1, 2))
     }
+
     "disjunction" >> {
       verify(iso1 \/ iso2, Left(0), Left(1))
       verify(iso1 \/ iso2, Right(0), Right(2))
     }
+
     "reverse" >> {
       verify(iso1, 0, 1)
       verify(~iso1, 1, 0)
     }
+
     "chain" >> {
       verify(iso1 >>> iso2, 0, 3)
       verify(iso1 <<< iso2, 0, 3)
@@ -104,51 +97,59 @@ class IsoSpec extends Specification {
     import TIso.Product._
     import TIso._
 
+    "create" in {
+      verify(create(5), (), 5)
+    }
+
+    "ignore" in {
+      verify(ignore(5), 5, ())
+    }
+
     "id" in {
-      val iso1: TIso[Unit, Int] = ignoreL(5)
-      val iso2: TIso[Int, Unit] = ignoreR(5)
+      val iso1: TIso[Unit, Int] = create(5)
+      val iso2: TIso[Int, Unit] = ignore(5)
       verify(iso1 >>> id[Int], (), 5)
       verify(iso2 <<< id[Int], 5, ())
     }
 
     "lift" in {
-      val iso1: TIso[Unit, Int] = ignoreL(5)
+      val iso1: TIso[Unit, Int] = create(5)
       verify(iso1 >>> lift[Int, Int](_ + 1, _ - 1), (), 6)
       verify(iso1 >>> liftF[Int, Int](_ + 1, _ - 1), (), 6)
     }
 
     "unit" in {
-      val iso1: TIso[Unit, Int] = ignoreL(5)
+      val iso1: TIso[Unit, Int] = create(5)
       verify(iso1 >>> unitL, (), ((), 5))
       verify(iso1 >>> unitR, (), (5, ()))
     }
 
     "commute" in {
-      val iso1: TIso[Unit, (Int, String)] = ignoreL((1, "s"))
+      val iso1: TIso[Unit, (Int, String)] = create((1, "s"))
       val iso2: TIso[Unit, (String, Int)] = iso1 >>> commute
       verify(iso2, (), ("s", 1))
 
-      val iso3: TIso[(Int, String), Unit] = ignoreR((1, "s"))
+      val iso3: TIso[(Int, String), Unit] = ignore((1, "s"))
       val iso4: TIso[(String, Int), Unit] = iso3 <<< commute
       verify(iso4, ("s", 1), ())
     }
 
     "associate" in {
-      val iso1: TIso[Unit, (Int, (Long, String))] = ignoreL((1, (2L, "s")))
+      val iso1: TIso[Unit, (Int, (Long, String))] = create((1, (2L, "s")))
       val iso2: TIso[Unit, ((Int, Long), String)] = iso1 >>> associate
       verify(iso2, (), ((1, 2L), "s"))
 
-      val iso3: TIso[((Int, Long), String), Unit] = ignoreR(((1, 2L), "s"))
+      val iso3: TIso[((Int, Long), String), Unit] = ignore(((1, 2L), "s"))
       val iso4: TIso[(Int, (Long, String)), Unit] = iso3 <<< associate
       verify(iso4, (1, (2L, "s")), ())
     }
 
     "flatten" in {
-      val iso1: TIso[Unit, (Int, (Long, String))] = ignoreL((1, (2L, "s")))
+      val iso1: TIso[Unit, (Int, (Long, String))] = create((1, (2L, "s")))
       val iso2: TIso[Unit, (Int, Long, String)]   = iso1 >>> flatten
       verify(iso2, (), (1, 2L, "s"))
 
-      val iso3: TIso[(Int, Long, String), Unit]   = ignoreR((1, 2L, "s"))
+      val iso3: TIso[(Int, Long, String), Unit]   = ignore((1, 2L, "s"))
       val iso4: TIso[(Int, (Long, String)), Unit] = iso3 <<< flatten
       verify(iso4, (1, (2L, "s")), ())
     }
