@@ -6,6 +6,8 @@ trait ParserSyntax[P[_], F[_], G[_]] {
 
   val iso: IsoClass[F, G]
 
+  def char: P[Char]
+
   def lift[A](a: A): P[A]
 
   def left[A, B](pa: P[A]): P[A \/ B]
