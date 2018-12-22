@@ -21,6 +21,42 @@ trait Iso[F[_], G[_], A, B] { self =>
   def <<< [C](
     that: Iso[F, G, C, A]
   )(implicit C1: Category[UFV], C2: Category[UGV]): Iso[F, G, C, B] = that >>> self
+
+  def /\ [C, D](
+    that: Iso[F, G, C, D]
+  )(implicit F: Applicative[F], G: Applicative[G]): Iso[F, G, A /\ C, B /\ D] =
+    new Iso[F, G, A /\ C, B /\ D] {
+      override def to: UFV[A /\ C, B /\ D] = {
+        case (a, c) => F.ap(self.to(a))(F.map(that.to(c))(d => b => (b, d)))
+      }
+      override def from: UGV[B /\ D, A /\ C] = {
+        case (b, d) => G.ap(self.from(b))(G.map(that.from(d))(c => a => (a, c)))
+      }
+    }
+
+  def ⓧ [C, D](
+    that: Iso[F, G, C, D]
+  )(implicit F: Applicative[F], G: Applicative[G]): Iso[F, G, A /\ C, B /\ D] = /\(that)
+
+  def \/ [C, D](
+    that: Iso[F, G, C, D]
+  )(implicit F: Applicative[F], G: Applicative[G]): Iso[F, G, A \/ C, B \/ D] =
+    new Iso[F, G, A \/ C, B \/ D] {
+      override def to: UFV[A \/ C, B \/ D] = {
+        case Left(a)  => F.map(self.to(a))(Left(_))
+        case Right(c) => F.map(that.to(c))(Right(_))
+      }
+      override def from: UGV[B \/ D, A \/ C] = {
+        case Left(b)  => G.map(self.from(b))(Left(_))
+        case Right(d) => G.map(that.from(d))(Right(_))
+      }
+    }
+
+  def unary_~(implicit FG: F ~> G, GF: G ~> F): Iso[F, G, B, A] =
+    new Iso[F, G, B, A] {
+      override def to: UFV[B, A]   = b => GF.apply(self.from(b))
+      override def from: UGV[A, B] = a => FG.apply(self.to(a))
+    }
 }
 
 trait IsoClass[F[_], G[_]] extends IsoInstances0[F, G] {
@@ -63,15 +99,25 @@ trait IsoClass[F[_], G[_]] extends IsoInstances0[F, G] {
         override def from: UGV[A ⓧ Id, A] = { case (a, _) => G.pure(a) }
       }
 
+    def commute[A, B](implicit F: Applicative[F], G: Applicative[G]): Iso[F, G, A ⓧ B, B ⓧ A] =
+      new Iso[F, G, A ⓧ B, B ⓧ A] {
+        override def to: UFV[A ⓧ B, B ⓧ A] = {
+          case (a, b) => F.pure((b, a))
+        }
+        override def from: UGV[B ⓧ A, A ⓧ B] = {
+          case (b, a) => G.pure((a, b))
+        }
+      }
+
     def associate[A, B, C](
       implicit F: Applicative[F],
       G: Applicative[G]
-    ): Iso[F, G, (A, (B, C)), ((A, B), C)] =
-      new Iso[F, G, (A, (B, C)), ((A, B), C)] {
-        override def to: UFV[(A, (B, C)), ((A, B), C)] = {
+    ): Iso[F, G, A ⓧ (B ⓧ C), A ⓧ B ⓧ C] =
+      new Iso[F, G, A ⓧ (B ⓧ C), A ⓧ B ⓧ C] {
+        override def to: UFV[A ⓧ (B ⓧ C), A ⓧ B ⓧ C] = {
           case (a, (b, c)) => F.pure(((a, b), c))
         }
-        override def from: UGV[((A, B), C), (A, (B, C))] = {
+        override def from: UGV[A ⓧ B ⓧ C, A ⓧ (B ⓧ C)] = {
           case ((a, b), c) => G.pure((a, (b, c)))
         }
       }
@@ -79,12 +125,12 @@ trait IsoClass[F[_], G[_]] extends IsoInstances0[F, G] {
     def flatten[A, B, C](
       implicit F: Applicative[F],
       G: Applicative[G]
-    ): Iso[F, G, (A, (B, C)), (A, B, C)] =
-      new Iso[F, G, (A, (B, C)), (A, B, C)] {
-        override def to: UFV[(A, (B, C)), (A, B, C)] = {
+    ): Iso[F, G, A ⓧ (B ⓧ C), (A, B, C)] =
+      new Iso[F, G, A ⓧ (B ⓧ C), (A, B, C)] {
+        override def to: UFV[A ⓧ (B ⓧ C), (A, B, C)] = {
           case (a, (b, c)) => F.pure((a, b, c))
         }
-        override def from: UGV[(A, B, C), (A, (B, C))] = {
+        override def from: UGV[(A, B, C), A ⓧ (B ⓧ C)] = {
           case (a, b, c) => G.pure((a, (b, c)))
         }
       }
@@ -93,6 +139,12 @@ trait IsoClass[F[_], G[_]] extends IsoInstances0[F, G] {
 
 trait IsoInstances0[F[_], G[_]] {
   self: IsoClass[F, G] =>
+
+  def ignore[A](a: A)(implicit F: Applicative[F], G: Applicative[G]): Iso[F, G, A, Unit] =
+    lift(_ => (), _ => a)
+
+  def create[A](a: A)(implicit F: Applicative[F], G: Applicative[G]): Iso[F, G, Unit, A] =
+    lift(_ => a, _ => ())
 
   def list[A](
     implicit F: Applicative[F],
@@ -112,64 +164,19 @@ object Combinators {
 
   implicit class IsoOps[F[_], G[_], A, B](ab: Iso[F, G, A, B]) {
 
+    // todo: remove, because it's a 'flatMap', but uses a symbol for 'map'
     def ∘ [C](
       ca: Iso[F, G, C, A]
     )(implicit C1: Category[ab.UFV], C2: Category[ab.UGV]): Iso[F, G, C, B] = ca >>> ab
 
+    // todo: is it possible? e.g. what is Alternative[Option] or Alternative[Id] ?
+    // todo: should be Coproduct, i.e. Iso[?, ?, A, B \/ C]
     def | (
       abOther: Iso[F, G, A, B]
     )(AF: Alternative[F], AG: Alternative[G]): Iso[F, G, A, B] =
       new Iso[F, G, A, B] {
         override def to: UFV[A, B]   = (a: A) => AF.or(ab.to(a), abOther.to(a))
         override def from: UGV[B, A] = (b: B) => AG.or(ab.from(b), abOther.from(b))
-      }
-
-    def unary_~(implicit FG: F ~> G, GF: G ~> F): Iso[F, G, B, A] =
-      new Iso[F, G, B, A] {
-        override def to: UFV[B, A]   = b => GF.apply(ab.from(b))
-        override def from: UGV[A, B] = a => FG.apply(ab.to(a))
-      }
-
-    def ⓧ [A2, B2](
-      other: Iso[F, G, A2, B2]
-    )(implicit AF: Applicative[F], AG: Applicative[G]): Iso[F, G, (A, A2), (B, B2)] =
-      new Iso[F, G, (A, A2), (B, B2)] {
-        override def to: UFV[(A, A2), (B, B2)] = {
-          case (a, a2) => AF.ap(ab.to(a))(AF.map(other.to(a2))(b2 => (b: B) => (b, b2)))
-        }
-
-        override def from: UGV[(B, B2), (A, A2)] = {
-          case (b, b2) => AG.ap(ab.from(b))(AG.map(other.from(b2))(a2 => (a: A) => (a, a2)))
-        }
-      }
-
-    def unitA(a: A)(implicit AF: Applicative[F], AG: Applicative[G]): Iso[F, G, A, Unit] =
-      new Iso[F, G, A, Unit] {
-        override def to: UFV[A, Unit] =
-          a0 => AF.ap[A, Unit](AF.pure(a0))(AF.pure[A => Unit](_ => ()))
-
-        override def from: UGV[Unit, A] =
-          _ => AG.ap[Unit, A](AG.pure(()))(AG.pure[Unit => A](_ => a))
-      }
-
-    def unitB(b: B)(implicit AF: Applicative[F], AG: Applicative[G]): Iso[F, G, B, Unit] =
-      new Iso[F, G, B, Unit] {
-        override def to: UFV[B, Unit] =
-          b0 => AF.ap[B, Unit](AF.pure(b0))(AF.pure[B => Unit](_ => ()))
-
-        override def from: UGV[Unit, B] =
-          _ => AG.ap[Unit, B](AG.pure(()))(AG.pure[Unit => B](_ => b))
-      }
-
-    def commute(implicit AF: Applicative[F], AG: Applicative[G]): Iso[F, G, (A, B), (B, A)] =
-      new Iso[F, G, (A, B), (B, A)] {
-        override def to: UFV[(A, B), (B, A)] = {
-          case (a, b) => AF.pure(b -> a)
-        }
-
-        override def from: UGV[(B, A), (A, B)] = {
-          case (b, a) => AG.pure(a -> b)
-        }
       }
   }
 }

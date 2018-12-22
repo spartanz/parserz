@@ -2,6 +2,7 @@ package scalaz.parsers
 
 import org.specs2.mutable.Specification
 import scalaz.Scalaz.Id
+import scalaz.data.{ ~>, ∀ }
 import scalaz.tc._
 
 class IsoSpec extends Specification {
@@ -25,106 +26,133 @@ class IsoSpec extends Specification {
     }
   )
 
-  private def ignoreL[A](a: A): TIso[Unit, A] = new TIso[Unit, A] {
-    def to: UFV[Unit, A]   = _ => a
-    def from: UGV[A, Unit] = _ => ()
-  }
-
-  private def ignoreR[A](a: A): TIso[A, Unit] = new TIso[A, Unit] {
-    def to: UFV[A, Unit]   = _ => ()
-    def from: UGV[Unit, A] = _ => a
-  }
+  implicit private val IdToId: Id ~> Id = ∀.mk[Id ~> Id].from(identity)
 
   private def verify[A, B](iso: TIso[A, B], a: A, b: B) =
     (iso.to(a) must_=== b)
       .and(iso.from(b) must_=== a)
       .and(iso.from(iso.to(a)) must_=== a)
 
-  "Constructing Iso" >> {
+  "Constructors" >> {
     import TIso.Product._
     import TIso._
 
-    "via id" in {
+    "id" in {
       verify(id[Int], 2, 2)
     }
 
-    "via lift" in {
+    "lift" in {
       verify(lift[Int, Int](_ + 1, _ - 1), 3, 4)
       verify(liftF[Int, Int](_ + 1, _ - 1), 3, 4)
     }
 
-    "via unit" in {
+    "unit" in {
       verify(unitL[Int], 1, ((), 1))
       verify(unitR[Int], 2, (2, ()))
     }
 
-    "via associate" in {
-      verify(
-        associate[Int, Long, String],
-        (1, (2L, "s")),
-        ((1, 2L), "s")
-      )
+    "commute" in {
+      verify(commute[Int, String], (1, "s"), ("s", 1))
     }
 
-    "via flatten" in {
-      verify(
-        flatten[Int, Long, String],
-        (1, (2L, "s")),
-        (1, 2L, "s")
-      )
+    "associate" in {
+      verify(associate[Int, Long, String], (1, (2L, "s")), ((1, 2L), "s"))
+    }
+
+    "flatten" in {
+      verify(flatten[Int, Long, String], (1, (2L, "s")), (1, 2L, "s"))
     }
   }
 
-  "Transforming Iso" >> {
-    import TIso.Product._
+  "Operations" >> {
     import TIso._
+    val iso1: TIso[Int, Int] = lift(_ + 1, _ - 1)
+    val iso2: TIso[Int, Int] = lift(_ + 2, _ - 2)
 
-    "via id" in {
-      val iso1: TIso[Unit, Int] = ignoreL(5)
-      val iso2: TIso[Int, Unit] = ignoreR(5)
-      verify(iso1 >>> id[Int], (), 5)
-      verify(iso2 <<< id[Int], 5, ())
+    "conjunction" >> {
+      verify(iso1 /\ iso2, (0, 0), (1, 2))
     }
 
-    "via lift" in {
-      val iso1: TIso[Unit, Int] = ignoreL(5)
-      verify(iso1 >>> lift[Int, Int](_ + 1, _ - 1), (), 6)
-      verify(iso1 >>> liftF[Int, Int](_ + 1, _ - 1), (), 6)
+    "disjunction" >> {
+      verify(iso1 \/ iso2, Left(0), Left(1))
+      verify(iso1 \/ iso2, Right(0), Right(2))
     }
 
-    "via unit" in {
-      val iso1: TIso[Unit, Int] = ignoreL(5)
-      verify(iso1 >>> unitL, (), ((), 5))
-      verify(iso1 >>> unitR, (), (5, ()))
+    "reverse" >> {
+      verify(iso1, 0, 1)
+      verify(~iso1, 1, 0)
     }
 
-    "via associate" in {
-      val iso1: TIso[Unit, (Int, (Long, String))] = ignoreL((1, (2L, "s")))
-      val iso2: TIso[Unit, ((Int, Long), String)] = iso1 >>> associate
-
-      verify(iso2, (), ((1, 2L), "s"))
-
-      val iso3: TIso[((Int, Long), String), Unit] = ignoreR(((1, 2L), "s"))
-      val iso4: TIso[(Int, (Long, String)), Unit] = iso3 <<< associate
-
-      verify(iso4, (1, (2L, "s")), ())
-    }
-
-    "via flatten" in {
-      val iso1: TIso[Unit, (Int, (Long, String))] = ignoreL((1, (2L, "s")))
-      val iso2: TIso[Unit, (Int, Long, String)]   = iso1 >>> flatten
-
-      verify(iso2, (), (1, 2L, "s"))
-
-      val iso3: TIso[(Int, Long, String), Unit]   = ignoreR((1, 2L, "s"))
-      val iso4: TIso[(Int, (Long, String)), Unit] = iso3 <<< flatten
-
-      verify(iso4, (1, (2L, "s")), ())
+    "chain" >> {
+      verify(iso1 >>> iso2, 0, 3)
+      verify(iso1 <<< iso2, 0, 3)
+      verify(~iso1 >>> iso2, 0, 1)
+      verify(~iso1 <<< iso2, 0, 1)
+      verify(~iso1 >>> ~iso2, 0, -3)
+      verify(~iso1 <<< ~iso2, 0, -3)
     }
   }
 
   "Combinators" >> {
+    import TIso.Product._
     import TIso._
+
+    "create" in {
+      verify(create(5), (), 5)
+    }
+
+    "ignore" in {
+      verify(ignore(5), 5, ())
+    }
+
+    "id" in {
+      val iso1: TIso[Unit, Int] = create(5)
+      val iso2: TIso[Int, Unit] = ignore(5)
+      verify(iso1 >>> id[Int], (), 5)
+      verify(iso2 <<< id[Int], 5, ())
+    }
+
+    "lift" in {
+      val iso1: TIso[Unit, Int] = create(5)
+      verify(iso1 >>> lift[Int, Int](_ + 1, _ - 1), (), 6)
+      verify(iso1 >>> liftF[Int, Int](_ + 1, _ - 1), (), 6)
+    }
+
+    "unit" in {
+      val iso1: TIso[Unit, Int] = create(5)
+      verify(iso1 >>> unitL, (), ((), 5))
+      verify(iso1 >>> unitR, (), (5, ()))
+    }
+
+    "commute" in {
+      val iso1: TIso[Unit, (Int, String)] = create((1, "s"))
+      val iso2: TIso[Unit, (String, Int)] = iso1 >>> commute
+      verify(iso2, (), ("s", 1))
+
+      val iso3: TIso[(Int, String), Unit] = ignore((1, "s"))
+      val iso4: TIso[(String, Int), Unit] = iso3 <<< commute
+      verify(iso4, ("s", 1), ())
+    }
+
+    "associate" in {
+      val iso1: TIso[Unit, (Int, (Long, String))] = create((1, (2L, "s")))
+      val iso2: TIso[Unit, ((Int, Long), String)] = iso1 >>> associate
+      verify(iso2, (), ((1, 2L), "s"))
+
+      val iso3: TIso[((Int, Long), String), Unit] = ignore(((1, 2L), "s"))
+      val iso4: TIso[(Int, (Long, String)), Unit] = iso3 <<< associate
+      verify(iso4, (1, (2L, "s")), ())
+    }
+
+    "flatten" in {
+      val iso1: TIso[Unit, (Int, (Long, String))] = create((1, (2L, "s")))
+      val iso2: TIso[Unit, (Int, Long, String)]   = iso1 >>> flatten
+      verify(iso2, (), (1, 2L, "s"))
+
+      val iso3: TIso[(Int, Long, String), Unit]   = ignore((1, 2L, "s"))
+      val iso4: TIso[(Int, (Long, String)), Unit] = iso3 <<< flatten
+      verify(iso4, (1, (2L, "s")), ())
+    }
 
     "list" in {
       verify(list[Int], Left(()), Nil)

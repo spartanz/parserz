@@ -211,7 +211,6 @@ object Simplest {
     }
 
     def foldL[A, B](iso: PIso[A ⓧ B, A]): PIso[A ⓧ List[B], A] = {
-      import Combinators._
       import ScalazInstances._
       def step: PIso[A ⓧ List[B], A ⓧ List[B]] = {
         val first: PIso[A ⓧ List[B], A ⓧ (B ⓧ List[B])] = id[A] ⓧ ~nel[B]
