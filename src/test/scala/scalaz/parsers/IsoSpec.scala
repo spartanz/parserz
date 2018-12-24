@@ -1,37 +1,48 @@
 package scalaz.parsers
 
 import org.specs2.mutable.Specification
-import scalaz.Scalaz.Id
 import scalaz.data.{ ~>, ∀ }
+import scalaz.tc.FoldableClass.{ DeriveFoldMap, DeriveToList }
 import scalaz.tc._
 
 class IsoSpec extends Specification {
 
-  private type TFun[A, B] = A => Id[B]
-  private type TIso[A, B] = Iso[Id, Id, A, B]
-  private object TIso extends IsoClass[Id, Id]
+  private type TFun[A, B] = A => Option[B]
+  private type TIso[A, B] = Iso[Option, Option, A, B]
+  private object TIso extends IsoClass[Option, Option]
 
-  implicit private val funCategory: Category[TFun] = instanceOf(
-    new CategoryClass[TFun] {
-      def id[A]: TFun[A, A]                                          = identity
-      def compose[A, B, C](f: TFun[B, C], g: TFun[A, B]): TFun[A, C] = g.andThen(f)
-    }
-  )
+  private object Instances {
+    import scalaz.Scalaz.monadApplicative
 
-  implicit private val idApplicative: Applicative[Id] = instanceOf(
-    new ApplicativeClass[Id] {
-      def pure[A](a: A): Id[A]                      = a
-      def ap[A, B](fa: Id[A])(f: Id[A => B]): Id[B] = f(fa)
-      def map[A, B](fa: Id[A])(f: A => B): Id[B]    = f(fa)
-    }
-  )
+    implicit val fun1Category: Category[TFun] = instanceOf(
+      new CategoryClass[TFun] {
+        def id[A]: TFun[A, A]                                          = Option.apply
+        def compose[A, B, C](f: TFun[B, C], g: TFun[A, B]): TFun[A, C] = g(_).flatMap(f)
+      }
+    )
 
-  implicit private val IdToId: Id ~> Id = ∀.mk[Id ~> Id].from(identity)
+    implicit val applicativeOption: Applicative[Option] =
+      monadApplicative[Option](implicitly)
+
+    implicit val foldableOption: Foldable[Option] = instanceOf(
+      new FoldableClass[Option] with DeriveFoldMap[Option] with DeriveToList[Option] {
+        override def foldRight[A, B](fa: Option[A], z: => B)(f: (A, => B) => B): B =
+          fa.fold(z)(f(_, z))
+        override def foldLeft[A, B](fa: Option[A], z: B)(f: (B, A) => B): B =
+          fa.fold(z)(f(z, _))
+      }
+    )
+
+    implicit val OptionToOption: Option ~> Option =
+      ∀.mk[Option ~> Option].from(identity)
+  }
+
+  import Instances._
 
   private def verify[A, B](iso: TIso[A, B], a: A, b: B) =
-    (iso.to(a) must_=== b)
-      .and(iso.from(b) must_=== a)
-      .and(iso.from(iso.to(a)) must_=== a)
+    (iso.to(a).get must_=== b)
+      .and(iso.from(b).get must_=== a)
+      .and(iso.from(iso.to(a).get).get must_=== a)
 
   "Constructors" >> {
     import TIso.Product._
@@ -43,7 +54,7 @@ class IsoSpec extends Specification {
 
     "lift" in {
       verify(lift[Int, Int](_ + 1, _ - 1), 3, 4)
-      verify(liftF[Int, Int](_ + 1, _ - 1), 3, 4)
+      verify(liftF[Int, Int](a => Some(a + 1), b => Some(b - 1)), 3, 4)
     }
 
     "unit" in {
@@ -115,7 +126,7 @@ class IsoSpec extends Specification {
     "lift" in {
       val iso1: TIso[Unit, Int] = create(5)
       verify(iso1 >>> lift[Int, Int](_ + 1, _ - 1), (), 6)
-      verify(iso1 >>> liftF[Int, Int](_ + 1, _ - 1), (), 6)
+      verify(iso1 >>> liftF[Int, Int](a => Some(a + 1), b => Some(b - 1)), (), 6)
     }
 
     "unit" in {
@@ -158,6 +169,17 @@ class IsoSpec extends Specification {
       verify(list[Int], Left(()), Nil)
       verify(list[Int], Right((1, Nil)), List(1))
       verify(list[Int], Right((2, List(1))), List(2, 1))
+    }
+
+    "iterate" in {
+      val iterator: TIso[Int, Int] = liftF(
+        a => Some(a + 1).filter(_ <= 5),
+        b => Some(b - 1).filter(_ >= 0)
+      )
+      iterate(iterator).to(2) must_=== Some(5)
+      iterate(iterator).to(7) must_=== Some(7)
+      iterate(iterator).from(2) must_=== Some(0)
+      iterate(iterator).from(-7) must_=== Some(-7)
     }
   }
 }

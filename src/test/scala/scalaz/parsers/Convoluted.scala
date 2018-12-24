@@ -61,25 +61,20 @@ object Convoluted {
       integer ∘ (apply[Int, Number](Number, _.value) >>> asExpression)
   }
 
+  object PIso extends IsoClass[Option, Id]
+
   object IsoInstances {
     import Syntax._
+    import PIso._
 
-    def subset[A](p: A => Boolean): PIso[A, A] = new PIso[A, A] {
-      override def to: UFV[A, A]   = Some(_).filter(p)
-      override def from: UGV[A, A] = identity
-    }
+    def subset[A](p: A => Boolean): PIso[A, A] =
+      liftF(Some(_).filter(p), identity)
 
-    def apply[A, B](ab: A => B, ba: B => A): PIso[A, B] = new PIso[A, B] {
-      override def to: UFV[A, B]   = a => Some(a).map(ab)
-      override def from: UGV[B, A] = ba
-    }
+    def apply[A, B](ab: A => B, ba: B => A): PIso[A, B] =
+      liftF(Some(_).map(ab), ba)
 
-    val asExpression: PIso[Number, Expression] = new PIso[Number, Expression] {
-      override def to: UFV[Number, Expression] = Some(_)
-      override def from: UGV[Expression, Number] = {
-        case l @ Number(_) => l
-      }
-    }
+    val asExpression: PIso[Number, Expression] =
+      liftF(Some(_), { case l @ Number(_) => l })
   }
 
   implicit class ParserOps[A](p: Parser[A]) {

@@ -3,7 +3,8 @@ package scalaz.parsers
 import scalaz.data.~>
 import scalaz.tc._
 
-trait Iso[F[_], G[_], A, B] { self =>
+sealed trait Iso[F[_], G[_], A, B] { self =>
+
   type UFV[U, V] = U => F[V]
   type UGV[U, V] = U => G[V]
 
@@ -59,7 +60,7 @@ trait Iso[F[_], G[_], A, B] { self =>
     }
 }
 
-trait IsoClass[F[_], G[_]] extends IsoInstances0[F, G] {
+trait IsoClass[F[_], G[_]] {
 
   def id[A](implicit F: Applicative[F], G: Applicative[G]): Iso[F, G, A, A] =
     new Iso[F, G, A, A] {
@@ -135,10 +136,6 @@ trait IsoClass[F[_], G[_]] extends IsoInstances0[F, G] {
         }
       }
   }
-}
-
-trait IsoInstances0[F[_], G[_]] {
-  self: IsoClass[F, G] =>
 
   def ignore[A](a: A)(implicit F: Applicative[F], G: Applicative[G]): Iso[F, G, A, Unit] =
     lift(_ => (), _ => a)
@@ -158,4 +155,19 @@ trait IsoInstances0[F[_], G[_]] {
       case a :: as => Right((a, as))
     }
   )
+
+  def iterate[A](
+    iso: Iso[F, G, A, A]
+  )(
+    implicit F: Applicative[F],
+    G: Applicative[G],
+    F0: Foldable[F],
+    G0: Foldable[G]
+  ): Iso[F, G, A, A] = {
+
+    def step[L[_]](f: A => L[A], state: A)(implicit L: Foldable[L]): A =
+      L.foldLeft(f(state), state) { case (_, s) => step(f, s) }
+
+    lift(step(iso.to, _), step(iso.from, _))
+  }
 }
