@@ -5,32 +5,44 @@ import scalaz.tc._
 
 sealed trait Iso[F[_], G[_], A, B] { self =>
 
-  type UFV[U, V] = U => F[V]
-  type UGV[U, V] = U => G[V]
-
-  def to: UFV[A, B]
-  def from: UGV[B, A]
+  def to: A => F[B]
+  def from: B => G[A]
 
   def >>> [C](
     that: Iso[F, G, B, C]
-  )(implicit C1: Category[UFV], C2: Category[UGV]): Iso[F, G, A, C] =
+  )(
+    implicit C1: Category[λ[(α, β) => α => F[β]]],
+    C2: Category[λ[(α, β) => α => G[β]]]
+  ): Iso[F, G, A, C] =
     new Iso[F, G, A, C] {
-      def to: UFV[A, C]   = C1.compose(that.to, self.to)
-      def from: UGV[C, A] = C2.compose(self.from, that.from)
+      def to: A => F[C]   = C1.compose(that.to, self.to)
+      def from: C => G[A] = C2.compose(self.from, that.from)
     }
+
+  //  def >>> [C](
+  //    that: Iso[F, G, B, C]
+  //  )(implicit F: Bind[F], G: Bind[G]): Iso[F, G, A, C] =
+  //    new Iso[F, G, A, C] {
+  //      def to: A => F[C]   = a => F.flatMap(self.to(a))(that.to)
+  //      def from: C => G[A] = c => G.flatMap(that.from(c))(self.from)
+  //    }
 
   def <<< [C](
     that: Iso[F, G, C, A]
-  )(implicit C1: Category[UFV], C2: Category[UGV]): Iso[F, G, C, B] = that >>> self
+  )(
+    implicit C1: Category[λ[(α, β) => α => F[β]]],
+    C2: Category[λ[(α, β) => α => G[β]]]
+  ): Iso[F, G, C, B] =
+    that >>> self
 
   def /\ [C, D](
     that: Iso[F, G, C, D]
   )(implicit F: Applicative[F], G: Applicative[G]): Iso[F, G, A /\ C, B /\ D] =
     new Iso[F, G, A /\ C, B /\ D] {
-      override def to: UFV[A /\ C, B /\ D] = {
+      override def to: A /\ C => F[B /\ D] = {
         case (a, c) => F.ap(self.to(a))(F.map(that.to(c))(d => b => (b, d)))
       }
-      override def from: UGV[B /\ D, A /\ C] = {
+      override def from: B /\ D => G[A /\ C] = {
         case (b, d) => G.ap(self.from(b))(G.map(that.from(d))(c => a => (a, c)))
       }
     }
@@ -43,11 +55,11 @@ sealed trait Iso[F[_], G[_], A, B] { self =>
     that: Iso[F, G, C, D]
   )(implicit F: Applicative[F], G: Applicative[G]): Iso[F, G, A \/ C, B \/ D] =
     new Iso[F, G, A \/ C, B \/ D] {
-      override def to: UFV[A \/ C, B \/ D] = {
+      override def to: A \/ C => F[B \/ D] = {
         case Left(a)  => F.map(self.to(a))(Left(_))
         case Right(c) => F.map(that.to(c))(Right(_))
       }
-      override def from: UGV[B \/ D, A \/ C] = {
+      override def from: B \/ D => G[A \/ C] = {
         case Left(b)  => G.map(self.from(b))(Left(_))
         case Right(d) => G.map(that.from(d))(Right(_))
       }
@@ -55,8 +67,8 @@ sealed trait Iso[F[_], G[_], A, B] { self =>
 
   def unary_~(implicit FG: F ~> G, GF: G ~> F): Iso[F, G, B, A] =
     new Iso[F, G, B, A] {
-      override def to: UFV[B, A]   = b => GF.apply(self.from(b))
-      override def from: UGV[A, B] = a => FG.apply(self.to(a))
+      override def to: B => F[A]   = b => GF.apply(self.from(b))
+      override def from: A => G[B] = a => FG.apply(self.to(a))
     }
 }
 
@@ -64,8 +76,8 @@ trait IsoClass[F[_], G[_]] {
 
   def id[A](implicit F: Applicative[F], G: Applicative[G]): Iso[F, G, A, A] =
     new Iso[F, G, A, A] {
-      override def to: UFV[A, A]   = F.pure
-      override def from: UGV[A, A] = G.pure
+      override def to: A => F[A]   = F.pure
+      override def from: A => G[A] = G.pure
     }
 
   def lift[A, B](
@@ -79,8 +91,8 @@ trait IsoClass[F[_], G[_]] {
 
   def liftF[A, B](ab: A => F[B], ba: B => G[A]): Iso[F, G, A, B] =
     new Iso[F, G, A, B] {
-      override def to: UFV[A, B]   = ab
-      override def from: UGV[B, A] = ba
+      override def to: A => F[B]   = ab
+      override def from: B => G[A] = ba
     }
 
   object Product {
@@ -90,22 +102,22 @@ trait IsoClass[F[_], G[_]] {
 
     def unitL[A](implicit F: Applicative[F], G: Applicative[G]): Iso[F, G, A, Id ⓧ A] =
       new Iso[F, G, A, Id ⓧ A] {
-        override def to: UFV[A, Id ⓧ A]   = a => F.pure(((), a))
-        override def from: UGV[Id ⓧ A, A] = { case (_, a) => G.pure(a) }
+        override def to: A => F[Id ⓧ A]   = a => F.pure(((), a))
+        override def from: Id ⓧ A => G[A] = { case (_, a) => G.pure(a) }
       }
 
     def unitR[A](implicit F: Applicative[F], G: Applicative[G]): Iso[F, G, A, A ⓧ Id] =
       new Iso[F, G, A, A ⓧ Id] {
-        override def to: UFV[A, A ⓧ Id]   = a => F.pure((a, ()))
-        override def from: UGV[A ⓧ Id, A] = { case (a, _) => G.pure(a) }
+        override def to: A => F[A ⓧ Id]   = a => F.pure((a, ()))
+        override def from: A ⓧ Id => G[A] = { case (a, _) => G.pure(a) }
       }
 
     def commute[A, B](implicit F: Applicative[F], G: Applicative[G]): Iso[F, G, A ⓧ B, B ⓧ A] =
       new Iso[F, G, A ⓧ B, B ⓧ A] {
-        override def to: UFV[A ⓧ B, B ⓧ A] = {
+        override def to: A ⓧ B => F[B ⓧ A] = {
           case (a, b) => F.pure((b, a))
         }
-        override def from: UGV[B ⓧ A, A ⓧ B] = {
+        override def from: B ⓧ A => G[A ⓧ B] = {
           case (b, a) => G.pure((a, b))
         }
       }
@@ -115,10 +127,10 @@ trait IsoClass[F[_], G[_]] {
       G: Applicative[G]
     ): Iso[F, G, A ⓧ (B ⓧ C), A ⓧ B ⓧ C] =
       new Iso[F, G, A ⓧ (B ⓧ C), A ⓧ B ⓧ C] {
-        override def to: UFV[A ⓧ (B ⓧ C), A ⓧ B ⓧ C] = {
+        override def to: A ⓧ (B ⓧ C) => F[A ⓧ B ⓧ C] = {
           case (a, (b, c)) => F.pure(((a, b), c))
         }
-        override def from: UGV[A ⓧ B ⓧ C, A ⓧ (B ⓧ C)] = {
+        override def from: A ⓧ B ⓧ C => G[A ⓧ (B ⓧ C)] = {
           case ((a, b), c) => G.pure((a, (b, c)))
         }
       }
@@ -128,10 +140,10 @@ trait IsoClass[F[_], G[_]] {
       G: Applicative[G]
     ): Iso[F, G, A ⓧ (B ⓧ C), (A, B, C)] =
       new Iso[F, G, A ⓧ (B ⓧ C), (A, B, C)] {
-        override def to: UFV[A ⓧ (B ⓧ C), (A, B, C)] = {
+        override def to: A ⓧ (B ⓧ C) => F[(A, B, C)] = {
           case (a, (b, c)) => F.pure((a, b, c))
         }
-        override def from: UGV[(A, B, C), A ⓧ (B ⓧ C)] = {
+        override def from: ((A, B, C)) => G[A ⓧ (B ⓧ C)] = {
           case (a, b, c) => G.pure((a, (b, c)))
         }
       }
