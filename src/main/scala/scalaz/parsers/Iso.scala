@@ -159,24 +159,3 @@ trait IsoInstances0[F[_], G[_]] {
     }
   )
 }
-
-object Combinators {
-
-  implicit class IsoOps[F[_], G[_], A, B](ab: Iso[F, G, A, B]) {
-
-    // todo: remove, because it's a 'flatMap', but uses a symbol for 'map'
-    def ∘ [C](
-      ca: Iso[F, G, C, A]
-    )(implicit C1: Category[ab.UFV], C2: Category[ab.UGV]): Iso[F, G, C, B] = ca >>> ab
-
-    // todo: is it possible? e.g. what is Alternative[Option] or Alternative[Id] ?
-    // todo: should be Coproduct, i.e. Iso[?, ?, A, B \/ C]
-    def | (
-      abOther: Iso[F, G, A, B]
-    )(AF: Alternative[F], AG: Alternative[G]): Iso[F, G, A, B] =
-      new Iso[F, G, A, B] {
-        override def to: UFV[A, B]   = (a: A) => AF.or(ab.to(a), abOther.to(a))
-        override def from: UGV[B, A] = (b: B) => AG.or(ab.from(b), abOther.from(b))
-      }
-  }
-}
