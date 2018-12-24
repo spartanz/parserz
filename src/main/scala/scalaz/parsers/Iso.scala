@@ -3,7 +3,8 @@ package scalaz.parsers
 import scalaz.data.~>
 import scalaz.tc._
 
-trait Iso[F[_], G[_], A, B] { self =>
+sealed trait Iso[F[_], G[_], A, B] { self =>
+
   type UFV[U, V] = U => F[V]
   type UGV[U, V] = U => G[V]
 
@@ -59,7 +60,7 @@ trait Iso[F[_], G[_], A, B] { self =>
     }
 }
 
-trait IsoClass[F[_], G[_]] extends IsoInstances0[F, G] {
+trait IsoClass[F[_], G[_]] {
 
   def id[A](implicit F: Applicative[F], G: Applicative[G]): Iso[F, G, A, A] =
     new Iso[F, G, A, A] {
@@ -135,10 +136,6 @@ trait IsoClass[F[_], G[_]] extends IsoInstances0[F, G] {
         }
       }
   }
-}
-
-trait IsoInstances0[F[_], G[_]] {
-  self: IsoClass[F, G] =>
 
   def ignore[A](a: A)(implicit F: Applicative[F], G: Applicative[G]): Iso[F, G, A, Unit] =
     lift(_ => (), _ => a)
@@ -158,25 +155,19 @@ trait IsoInstances0[F[_], G[_]] {
       case a :: as => Right((a, as))
     }
   )
-}
 
-object Combinators {
+  def iterate[A](
+    iso: Iso[F, G, A, A]
+  )(
+    implicit F: Applicative[F],
+    G: Applicative[G],
+    F0: Foldable[F],
+    G0: Foldable[G]
+  ): Iso[F, G, A, A] = {
 
-  implicit class IsoOps[F[_], G[_], A, B](ab: Iso[F, G, A, B]) {
+    def step[L[_]](f: A => L[A], state: A)(implicit L: Foldable[L]): A =
+      L.foldLeft(f(state), state) { case (_, s) => step(f, s) }
 
-    // todo: remove, because it's a 'flatMap', but uses a symbol for 'map'
-    def ∘ [C](
-      ca: Iso[F, G, C, A]
-    )(implicit C1: Category[ab.UFV], C2: Category[ab.UGV]): Iso[F, G, C, B] = ca >>> ab
-
-    // todo: is it possible? e.g. what is Alternative[Option] or Alternative[Id] ?
-    // todo: should be Coproduct, i.e. Iso[?, ?, A, B \/ C]
-    def | (
-      abOther: Iso[F, G, A, B]
-    )(AF: Alternative[F], AG: Alternative[G]): Iso[F, G, A, B] =
-      new Iso[F, G, A, B] {
-        override def to: UFV[A, B]   = (a: A) => AF.or(ab.to(a), abOther.to(a))
-        override def from: UGV[B, A] = (b: B) => AG.or(ab.from(b), abOther.from(b))
-      }
+    lift(step(iso.to, _), step(iso.from, _))
   }
 }

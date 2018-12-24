@@ -1,6 +1,7 @@
 package scalaz.parsers
 
 import scalaz.data.{ ~>, ∀ }
+import scalaz.tc.FoldableClass.{ DeriveFoldMap, DeriveToList }
 import scalaz.tc._
 
 object Simplest {
@@ -53,6 +54,15 @@ object Simplest {
 
     implicit val applicativeOption: Applicative[Option] =
       monadApplicative[Option](implicitly)
+
+    implicit val foldableOption: Foldable[Option] = instanceOf(
+      new FoldableClass[Option] with DeriveFoldMap[Option] with DeriveToList[Option] {
+        override def foldRight[A, B](fa: Option[A], z: => B)(f: (A, => B) => B): B =
+          fa.fold(z)(f(_, z))
+        override def foldLeft[A, B](fa: Option[A], z: B)(f: (B, A) => B): B =
+          fa.fold(z)(f(z, _))
+      }
+    )
 
     implicit val OptionToOption: Option ~> Option =
       ∀.mk[Option ~> Option].from(identity)
@@ -179,10 +189,8 @@ object Simplest {
     import PIso.Product._
     import PIso._
 
-    def subset[A](p: A => Boolean): PIso[A, A] = new PIso[A, A] {
-      def to: UFV[A, A]   = Some(_).filter(p)
-      def from: UGV[A, A] = to
-    }
+    def subset[A](p: A => Boolean): PIso[A, A] =
+      liftF(Some(_).filter(p), Some(_).filter(p))
 
     def unsafe[A, B](ab: PartialFunction[A, B], ba: PartialFunction[B, A]): PIso[A, B] =
       liftF(ab.lift, ba.lift)
@@ -196,19 +204,6 @@ object Simplest {
       { case (x, xs) => x :: xs },
       { case x :: xs => (x, xs) }
     )
-
-    def iterate[A](iso: PIso[A, A]): PIso[A, A] = {
-      @annotation.tailrec
-      def step(f: A => Option[A], state: A): A =
-        f(state) match {
-          case Some(state1) => step(f, state1)
-          case None         => state
-        }
-      new PIso[A, A] {
-        def to: UFV[A, A]   = a => Some(step(iso.to, a))
-        def from: UGV[A, A] = a => Some(step(iso.from, a))
-      }
-    }
 
     def foldL[A, B](iso: PIso[A ⓧ B, A]): PIso[A ⓧ List[B], A] = {
       import ScalazInstances._
