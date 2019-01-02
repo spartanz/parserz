@@ -1,7 +1,5 @@
 package scalaz.parsers
 
-import scalaz.tc.Applicative
-
 trait ParserSyntax[P[_], F[_], G[_]] {
 
   val iso: IsoClass[F, G]
@@ -20,7 +18,7 @@ trait ParserSyntax[P[_], F[_], G[_]] {
   def or[A, B](pa: P[A], pb: => P[B])(implicit A: Alternative[P]): P[A \/ B] =
     A.or(left(pa), right(pb))
 
-  def isoMap[A, B](pa: P[A])(iso: Iso[F, G, A, B]): P[B]
+  def isoMap[A, B](pa: P[A])(instance: iso.Iso[A, B]): P[B]
 
   def delay[A](pa: => P[A]): P[A]
 
@@ -35,15 +33,10 @@ trait ParserSyntax[P[_], F[_], G[_]] {
     def || (other: => P[A])(implicit A: Alternative[P]): P[A] =
       A.or(p, other)
 
-    def ∘ [B](iso: Iso[F, G, A, B]): P[B] =
-      isoMap(p)(iso)
+    def ∘ [B](instance: iso.Iso[A, B]): P[B] =
+      isoMap(p)(instance)
 
-    def many(
-      implicit P: ProductFunctor[P],
-      A: Alternative[P],
-      F: Applicative[F],
-      G: Applicative[G]
-    ): P[List[A]] = {
+    def many(implicit P: ProductFunctor[P], A: Alternative[P]): P[List[A]] = {
       lazy val step: P[List[A]] = (lift(()) \/ (p /\ delay(step))) ∘ iso.list
       step
     }
