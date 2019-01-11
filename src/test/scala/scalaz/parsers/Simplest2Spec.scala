@@ -1,8 +1,8 @@
 package scalaz.parsers
 
 import org.specs2.mutable.Specification
-import scalaz.data.{~>, ∀}
-import scalaz.tc.FoldableClass.{DeriveFoldMap, DeriveToList}
+import scalaz.data.{ ~>, ∀ }
+import scalaz.tc.FoldableClass.{ DeriveFoldMap, DeriveToList }
 import scalaz.tc._
 
 class Simplest2Spec extends Specification {
@@ -51,11 +51,12 @@ class Simplest2Spec extends Specification {
 
     val start: TestClass[Option, Option] = TestClass[Option, Option]
 
-    import start.Ex2.Codec
+    import start.Codec
     import start.Equiv
     import start.Equiv.Product._
 
     object EquivInstances {
+
       def subset[A](p: A => Boolean): Equiv[A, A] =
         Equiv.liftF(Some(_).filter(p), Some(_).filter(p))
 
@@ -97,15 +98,16 @@ class Simplest2Spec extends Specification {
 
     type C[A] = Codec[List[Char], A]
 
-    val empty: C[Unit] = Codec(Equiv.liftF(
-      { case Nil => Some((Nil, ())); case _ :: _ => None },
-      { case (l, ()) => Some(l) }
-    ))
+    val hack: List[Char] => Option[(List[Char], Unit)] = {
+      case Nil => Some((Nil, ())); case _ :: _ => None
+    }
 
-    val char: C[Char] = Codec(Equiv.liftF(
-      { case h :: t => Some(t -> h); case Nil => None },
-      { case (l, c) => Some(c :: l) }
-    ))
+    val char: C[Char] = Codec(
+      Equiv.liftF(
+        { case h :: t => Some(t -> h); case Nil => None },
+        { case (l, c) => Some(c :: l) }
+      )
+    )
 
     val digit: C[Char] = char ∘ subset(_.isDigit)
 
@@ -117,7 +119,7 @@ class Simplest2Spec extends Specification {
 
     val case0: C[Expression] = constant ∘ constantExpressionIso
 
-    val case1: C[Expression] = (case0 ~ (plus ~ case0).many(empty)) ∘ foldL(sumExpressionIso)
+    val case1: C[Expression] = (case0 ~ (plus ~ case0).many(hack)) ∘ foldL(sumExpressionIso)
 
     lazy val expression: C[Expression] = case1
   }
@@ -172,7 +174,9 @@ class Simplest2Spec extends Specification {
     "print a sum" in {
       print(Sum(Constant(1), Constant(2))) must_=== Some("1+2")
       print(Sum(Sum(Constant(1), Constant(2)), Constant(3))) must_=== Some("1+2+3")
-      print(Sum(Sum(Sum(Constant(1), Constant(2)), Constant(3)), Constant(4))) must_=== Some("1+2+3+4")
+      print(Sum(Sum(Sum(Constant(1), Constant(2)), Constant(3)), Constant(4))) must_=== Some(
+        "1+2+3+4"
+      )
     }
     "not print an incorrectly composed expression" in {
       print(Sum(Constant(1), Sum(Constant(2), Constant(3)))) must_=== None

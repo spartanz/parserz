@@ -6,10 +6,8 @@ import scalaz.tc._
 
 object TestClass {
 
-  def apply[F[_], G[_]](
-    implicit F_ : Applicative[F],
-    G_ : Applicative[G],
-    C1_ : Category[λ[(α, β) => α => F[β]]],
+  def apply[F[_]: Applicative, G[_]: Applicative](
+    implicit C1_ : Category[λ[(α, β) => α => F[β]]],
     C2_ : Category[λ[(α, β) => α => G[β]]]
   ): TestClass[F, G] =
     new TestClass[F, G] {
@@ -42,7 +40,7 @@ sealed trait TestClass[F[_], G[_]] {
       compose(compose(first[A, B, C](ab), second[A, C, A](ac)), duplicate[A])
 
     // todo: this is correct but insane
-    def conjunction [A, B, C, D](ab: A =>: B, cd: C =>: D): (A, C) =>: (B, D) = {
+    def conjunction[A, B, C, D](ab: A =>: B, cd: C =>: D): (A, C) =>: (B, D) = {
       val x3: (A, C) =>: (C, B)                     = compose(swap, first[A, B, C](ab))
       val x4: (A, C) =>: (A, D)                     = second[C, D, A](cd)
       val x5: (A, C) =>: ((C, B), (A, D))           = combine(x3, x4)
@@ -70,7 +68,7 @@ sealed trait TestClass[F[_], G[_]] {
     C: Category[λ[(α, β) => α => M[β]]]
   ): Transform[λ[(α, β) => α => M[β]]] = instanceOf(
     new TransformClass[λ[(α, β) => α => M[β]]] with DeriveDimap[λ[(α, β) => α => M[β]]] {
-      override def id[A]: A => M[A] = C.id
+      override def id[A]: A => M[A]                                        = C.id
       override def compose[A, B, C](f: B => M[C], g: A => M[B]): A => M[C] = C.compose(f, g)
 
       override def first[A, B, C](pab: A => M[B]): ((A, C)) => M[(B, C)] = {
@@ -100,7 +98,7 @@ sealed trait TestClass[F[_], G[_]] {
       override def combine[A, B, C](ab: A => M[B], ac: A => M[C]): A => M[(B, C)] =
         a => M.ap(ab(a))(M.map(ac(a))(c => b => (b, c)))
 
-      override def conjunction [A, B, C, D](ab: A => M[B], cd: C => M[D]): ((A, C)) => M[(B, D)] = {
+      override def conjunction[A, B, C, D](ab: A => M[B], cd: C => M[D]): ((A, C)) => M[(B, D)] = {
         case (a, c) => M.ap(ab(a))(M.map(cd(c))(d => b => (b, d)))
       }
 
@@ -115,6 +113,7 @@ sealed trait TestClass[F[_], G[_]] {
     def to: A => F[B]
     def from: B => G[A]
   }
+
   object Equiv {
     private[parsers] val AB: Transform[λ[(α, β) => α => F[β]]] = transform[F]
     private[parsers] val BA: Transform[λ[(α, β) => α => G[β]]] = transform[G]
@@ -131,6 +130,7 @@ sealed trait TestClass[F[_], G[_]] {
     }
 
     implicit class EquivOps[A, B](self: Equiv[A, B]) {
+
       def >>> [C](that: Equiv[B, C]): Equiv[A, C] =
         new Equiv[A, C] {
           def to: A => F[C]   = AB.compose(that.to, self.to)
@@ -213,109 +213,80 @@ sealed trait TestClass[F[_], G[_]] {
     }
   }
 
-  object Ex {
+  case class Codec[I, A](eq: Equiv[I, (I, A)]) { self =>
     import Equiv._
-    import Equiv.Product._
 
-    def nil[A]: Equiv[Id, List[A]]           = ???
-    def nel[A]: Equiv[(A, List[A]), List[A]] = ???
+    // ProductFunctor functionality
+    def ~ [B](that: Codec[I, B]): Codec[I, (A, B)] =
+      Codec(new Equiv[I, (I, (A, B))] {
+        override def to: I => F[(I, (A, B))] =
+          AB.compose[I, (I, A), (I, (A, B))](
+            { case (i1, a) => F.map(that.eq.to(i1)) { case (i2, b) => (i2, (a, b)) } },
+            self.eq.to
+          )
+        override def from: ((I, (A, B))) => G[I] = {
+          case (i, (a, b)) =>
+            BA.compose[(I, A), I, I](
+              i1 => that.eq.from((i1, b)),
+              self.eq.from
+            )((i, a))
+        }
+      })
 
-    def foldL[A, B](
-      equiv: Equiv[A ⓧ B, A]
-    )(
-      implicit F0: Foldable[F],
-      G0: Foldable[G],
-      FG: F ~> G,
-      GF: G ~> F
-    ): Equiv[A ⓧ List[B], A] = {
+    // Alternative functionality
+    def | [B](that: Codec[I, B])(implicit AF: Alternative[F]): Codec[I, A \/ B] =
+      Codec(new Equiv[I, (I, A \/ B)] {
+        override def to: I => F[(I, A \/ B)] =
+          i =>
+            AF.or(
+              F.map(self.eq.to(i)) { case (i1, a) => (i1, Left(a)) },
+              F.map(that.eq.to(i)) { case (i2, b) => (i2, Right(b)) }
+            )
+        override def from: ((I, A \/ B)) => G[I] = {
+          case (i, Left(a))  => self.eq.from((i, a))
+          case (i, Right(b)) => that.eq.from((i, b))
+        }
+      })
 
-      def step: Equiv[A ⓧ List[B], A ⓧ List[B]] = {
-        val first: Equiv[A ⓧ List[B], A ⓧ (B ⓧ List[B])] = nel[B].reverse.second
-        val app: Equiv[A ⓧ B ⓧ List[B], A ⓧ List[B]]     = equiv.first
-        first >>> associate >>> app
-      }
-      iterate(step) >>> nil[B].second[A].reverse >>> unitR[A].reverse
-      // A ⓧ List[B]
-      // A ⓧ Id
-      // A
+    // IsoFunctor functionality
+    def ∘ [B](equiv: Equiv[A, B]): Codec[I, B] =
+      Codec(new Equiv[I, (I, B)] {
+        override def to: I => F[(I, B)] =
+          AB.compose[I, (I, A), (I, B)](
+            { case (i, a) => F.map(equiv.to(a))((i, _)) },
+            self.eq.to
+          )
+        override def from: ((I, B)) => G[I] =
+          BA.compose[(I, B), (I, A), I](
+            self.eq.from,
+            { case (i, b) => G.map(equiv.from(b))((i, _)) }
+          )
+      })
+
+    // todo: remove the hack!
+    def many(hack: I => F[(I, Unit)])(implicit AF: Alternative[F]): Codec[I, List[A]] = {
+      val empty: Codec[I, Unit] = Codec(
+        Equiv.liftF(
+          hack, { case (i, ()) => G.pure(i) }
+        )
+      )
+      lazy val step: Codec[I, List[A]] =
+        (empty | (self ~ Codec(
+          new Equiv[I, (I, List[A])] {
+            override def to: I => F[(I, List[A])]     = step.eq.to(_)
+            override def from: ((I, List[A])) => G[I] = step.eq.from(_)
+          }
+        ))) ∘ Equiv.list
+      step
     }
   }
 
-  object Ex2 {
-    import Equiv._
+  object Codec {
 
-    case class Codec[I, A](eq: Equiv[I, (I, A)]) { self =>
-
-      // ProductFunctor functionality
-      def ~ [B](that: Codec[I, B]): Codec[I, (A, B)] =
-        Codec(new Equiv[I, (I, (A, B))] {
-          override def to: I => F[(I, (A, B))] =
-            AB.compose[I, (I, A), (I, (A, B))](
-              { case (i1, a) => F.map(that.eq.to(i1)) { case (i2, b) => (i2, (a, b)) } },
-              self.eq.to
-            )
-          override def from: ((I, (A, B))) => G[I] = {
-            case (i, (a, b)) =>
-              BA.compose[(I, A), I, I](
-                i1 => that.eq.from((i1, b)),
-                self.eq.from
-              )((i, a))
-          }
-        })
-
-      // Alternative functionality
-      def | [B](that: Codec[I, B])(implicit AF: Alternative[F]): Codec[I, A \/ B] =
-        Codec(new Equiv[I, (I, A \/ B)] {
-          override def to: I => F[(I, A \/ B)] =
-            i =>
-              AF.or(
-                F.map(self.eq.to(i)){ case (i1, a) => (i1, Left(a)) },
-                F.map(that.eq.to(i)){ case (i2, b) => (i2, Right(b)) }
-              )
-          override def from: ((I, A \/ B)) => G[I] = {
-            case (i, Left(a)) => self.eq.from((i, a))
-            case (i, Right(b)) => that.eq.from((i, b))
-          }
-        })
-
-      // IsoFunctor functionality
-      def ∘ [B](equiv: Equiv[A, B]): Codec[I, B] =
-        Codec(new Equiv[I, (I, B)] {
-          override def to: I => F[(I, B)] =
-            AB.compose[I, (I, A), (I, B)](
-              { case (i, a) => F.map(equiv.to(a))((i, _)) },
-              self.eq.to
-            )
-          override def from: ((I, B)) => G[I] =
-            BA.compose[(I, B), (I, A), I](
-              self.eq.from,
-              { case (i, b) => G.map(equiv.from(b))((i, _)) }
-            )
-        })
-
-      // todo: remove the empty hack!
-      def many(empty: Codec[I, Unit])(implicit AF: Alternative[F]): Codec[I, List[A]] = {
-        lazy val step: Codec[I, List[A]] =
-          (empty | (self ~ Codec(
-            new Equiv[I, (I, List[A])] {
-              override def to: I => F[(I, List[A])] = step.eq.to(_)
-              override def from: ((I, List[A])) => G[I] = step.eq.from(_)
-            }
-          ))) ∘ Equiv.list
-        step
-      }
-    }
-
-    object Codec {
-      def lift[I, A](a: A): Codec[I, A] = Codec(new Equiv[I, (I, A)] {
-        override def to: I => F[(I, A)] = i => F.pure((i, a))
+    def lift[I, A](a: A): Codec[I, A] =
+      Codec(new Equiv[I, (I, A)] {
+        override def to: I => F[(I, A)]     = i => F.pure((i, a))
         override def from: ((I, A)) => G[I] = { case (i, _) => G.pure(i) }
       })
-    }
-
-    val c1: Codec[List[Char], Char] = Codec(new Equiv[List[Char], (List[Char], Char)] {
-      override def to: List[Char] => F[(List[Char], Char)] = ???     // e.g. Some(tail -> head)
-      override def from: ((List[Char], Char)) => G[List[Char]] = ??? // e.g. Some(_ :: _)
-    })
   }
 }
