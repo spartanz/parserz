@@ -174,13 +174,13 @@ sealed trait TestClass[F[_], G[_]] {
         }
     }
 
-    def list[A]: Equiv[Unit \/ (A /\ List[A]), List[A]] = lift(
+    def list[A]: Equiv[A /\ List[A] \/ Unit, List[A]] = lift(
       {
-        case Left(_)        => Nil
-        case Right((a, as)) => a :: as
+        case Right(_)      => Nil
+        case Left((a, as)) => a :: as
       }, {
-        case Nil     => Left(())
-        case a :: as => Right((a, as))
+        case Nil     => Right(())
+        case a :: as => Left((a, as))
       }
     )
 
@@ -263,20 +263,14 @@ sealed trait TestClass[F[_], G[_]] {
           )
       })
 
-    // todo: remove the hack!
-    def many(hack: I => F[(I, Unit)])(implicit AF: Alternative[F]): Codec[I, List[A]] = {
-      val empty: Codec[I, Unit] = Codec(
-        Equiv.liftF(
-          hack, { case (i, ()) => G.pure(i) }
-        )
-      )
+    def many(implicit AF: Alternative[F]): Codec[I, List[A]] = {
       lazy val step: Codec[I, List[A]] =
-        (empty | (self ~ Codec(
+        ((self ~ Codec(
           new Equiv[I, (I, List[A])] {
             override def to: I => F[(I, List[A])]     = step.eq.to(_)
             override def from: ((I, List[A])) => G[I] = step.eq.from(_)
           }
-        ))) ∘ Equiv.list
+        )) | Codec.lift(())) ∘ Equiv.list
       step
     }
   }

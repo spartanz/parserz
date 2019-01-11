@@ -98,10 +98,6 @@ class Simplest2Spec extends Specification {
 
     type C[A] = Codec[List[Char], A]
 
-    val hack: List[Char] => Option[(List[Char], Unit)] = {
-      case Nil => Some((Nil, ())); case _ :: _ => None
-    }
-
     val char: C[Char] = Codec(
       Equiv.liftF(
         { case h :: t => Some(t -> h); case Nil => None },
@@ -119,7 +115,7 @@ class Simplest2Spec extends Specification {
 
     val case0: C[Expression] = constant ∘ constantExpressionIso
 
-    val case1: C[Expression] = (case0 ~ (plus ~ case0).many(hack)) ∘ foldL(sumExpressionIso)
+    val case1: C[Expression] = (case0 ~ (plus ~ case0).many) ∘ foldL(sumExpressionIso)
 
     lazy val expression: C[Expression] = case1
   }
@@ -142,7 +138,7 @@ class Simplest2Spec extends Specification {
     }
 
     "not parse two digits (because it's indeed simplest)" in {
-      parse("55") must_=== None
+      parse("55") must_=== Some(List('5') -> Constant(5))
     }
 
     "not parse a letter and indicate failure" in {
