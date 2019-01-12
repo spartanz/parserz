@@ -67,6 +67,8 @@ object Simplest {
     implicit val OptionToOption: Option ~> Option =
       ∀.mk[Option ~> Option].from(identity)
 
+    type PFunction[A, B] = A => Option[B]
+
     implicit val CategoryOfPartialFunctions: Category[PFunction] = instanceOf(
       new CategoryClass[PFunction] {
         override def id[A]: PFunction[A, A] = Option.apply
@@ -77,10 +79,6 @@ object Simplest {
       }
     )
   }
-
-  type PFunction[A, B] = A => Option[B]
-  type PIso[A, B]      = Iso[Option, Option, A, B]
-  object PIso extends IsoClass[Option, Option]
 
   object Syntax {
     sealed trait Expression
@@ -95,6 +93,38 @@ object Simplest {
     import P._
     import IsoInstances._
     import ScalazInstances._
+
+    type PIso[A, B] = iso.Iso[A, B]
+
+    object IsoInstances {
+      import iso._
+      import iso.Product._
+
+      def subset[A](p: A => Boolean): PIso[A, A] =
+        liftF(Some(_).filter(p), Some(_).filter(p))
+
+      def unsafe[A, B](ab: PartialFunction[A, B], ba: PartialFunction[B, A]): PIso[A, B] =
+        liftF(ab.lift, ba.lift)
+
+      def nil[A]: PIso[Unit, List[A]] = unsafe(
+        { case ()  => Nil },
+        { case Nil => () }
+      )
+
+      def nel[A]: PIso[(A, List[A]), List[A]] = unsafe(
+        { case (x, xs) => x :: xs },
+        { case x :: xs => (x, xs) }
+      )
+
+      def foldL[A, B](iso: PIso[A ⓧ B, A]): PIso[A ⓧ List[B], A] = {
+        def step: PIso[A ⓧ List[B], A ⓧ List[B]] = {
+          val first: PIso[A ⓧ List[B], A ⓧ (B ⓧ List[B])] = pure[A] ⓧ ~nel[B]
+          val app: PIso[A ⓧ B ⓧ List[B], A ⓧ List[B]]     = iso ⓧ pure[List[B]]
+          first >>> associate >>> app
+        }
+        iterate(step) >>> (pure[A] ⓧ ~nil[B]) >>> ~unitR[A]
+      }
+    }
 
     val digit: P[Char] =
       char ∘ subset(_.isDigit)
@@ -134,8 +164,10 @@ object Simplest {
   }
 
   object Parser extends ParserSyntax[Parser, Option, Option] {
+    import ScalazInstances._
+
     override val iso: IsoClass[Option, Option] =
-      PIso
+      IsoClass[Option, Option]
 
     override def char: Parser[Char] = {
       case head :: tail => Right(tail -> head)
@@ -151,16 +183,20 @@ object Simplest {
     override def right[A, B](pb: Parser[B]): Parser[A \/ B] =
       pb(_).map { case (s1, b) => s1 -> Right(b) }
 
-    override def isoMap[A, B](pa: Parser[A])(iso: PIso[A, B]): Parser[B] =
-      pa(_).flatMap { case (rest, v) => iso.to(v).fold[Result[B]](Left(()))(b => Right(rest -> b)) }
+    override def isoMap[A, B](pa: Parser[A])(instance: iso.Iso[A, B]): Parser[B] =
+      pa(_).flatMap {
+        case (rest, v) => instance.to(v).fold[Result[B]](Left(()))(b => Right(rest -> b))
+      }
 
     override def delay[A](pa: => Parser[A]): Parser[A] =
       pa(_)
   }
 
   object Printer extends ParserSyntax[Printer, Option, Option] {
+    import ScalazInstances._
+
     override val iso: IsoClass[Option, Option] =
-      PIso
+      IsoClass[Option, Option]
 
     override def char: Printer[Char] =
       _.toString
@@ -178,41 +214,10 @@ object Simplest {
       case Right(b) => pb(b)
     }
 
-    override def isoMap[A, B](pa: Printer[A])(iso: PIso[A, B]): Printer[B] =
-      iso.from(_).fold("")(pa)
+    override def isoMap[A, B](pa: Printer[A])(instance: iso.Iso[A, B]): Printer[B] =
+      instance.from(_).fold("")(pa)
 
     override def delay[A](pa: => Printer[A]): Printer[A] =
       pa(_)
-  }
-
-  object IsoInstances {
-    import PIso.Product._
-    import PIso._
-
-    def subset[A](p: A => Boolean): PIso[A, A] =
-      liftF(Some(_).filter(p), Some(_).filter(p))
-
-    def unsafe[A, B](ab: PartialFunction[A, B], ba: PartialFunction[B, A]): PIso[A, B] =
-      liftF(ab.lift, ba.lift)
-
-    def nil[A]: PIso[Unit, List[A]] = unsafe(
-      { case ()  => Nil },
-      { case Nil => () }
-    )
-
-    def nel[A]: PIso[(A, List[A]), List[A]] = unsafe(
-      { case (x, xs) => x :: xs },
-      { case x :: xs => (x, xs) }
-    )
-
-    def foldL[A, B](iso: PIso[A ⓧ B, A]): PIso[A ⓧ List[B], A] = {
-      import ScalazInstances._
-      def step: PIso[A ⓧ List[B], A ⓧ List[B]] = {
-        val first: PIso[A ⓧ List[B], A ⓧ (B ⓧ List[B])] = id[A] ⓧ ~nel[B]
-        val app: PIso[A ⓧ B ⓧ List[B], A ⓧ List[B]]     = iso ⓧ id[List[B]]
-        first >>> associate >>> app
-      }
-      iterate(step) >>> (id[A] ⓧ ~nil[B]) >>> ~unitR[A]
-    }
   }
 }

@@ -8,8 +8,10 @@ class ParserSyntaxSpec extends Specification {
   private type Parser[A] = String => (String, List[A])
 
   private object Parser extends ParserSyntax[Parser, Option, Option] {
+    import Instances._
+
     override val iso: IsoClass[Option, Option] =
-      new IsoClass[Option, Option] {}
+      IsoClass[Option, Option]
 
     override def char: Parser[Char] =
       s => s.headOption.fold("" -> List.empty[Char])(h => s.drop(1) -> List(h))
@@ -23,8 +25,8 @@ class ParserSyntaxSpec extends Specification {
     override def right[A, B](pb: Parser[B]): Parser[A \/ B] =
       s => pb(s) match { case (s1, bs) => s1 -> bs.map(Right(_)) }
 
-    override def isoMap[A, B](pa: Parser[A])(iso: Iso[Option, Option, A, B]): Parser[B] =
-      s => pa(s) match { case (s1, aa) => s1 -> aa.map(iso.to).collect { case Some(b) => b } }
+    override def isoMap[A, B](pa: Parser[A])(instance: iso.Iso[A, B]): Parser[B] =
+      s => pa(s) match { case (s1, aa) => s1 -> aa.map(instance.to).collect { case Some(b) => b } }
 
     override def delay[A](pa: => Parser[A]): Parser[A] =
       pa(_)
@@ -56,6 +58,15 @@ class ParserSyntaxSpec extends Specification {
 
     implicit val applicativeOption: Applicative[Option] =
       monadApplicative[Option](implicitly)
+
+    type =>:[A, B] = A => Option[B]
+
+    implicit val CategoryOfPartialFunctions: Category[=>:] = instanceOf(
+      new CategoryClass[=>:] {
+        override def id[A]: =>:[A, A]                                        = Option.apply
+        override def compose[A, B, C](f: =>:[B, C], g: =>:[A, B]): =>:[A, C] = g(_).flatMap(f)
+      }
+    )
   }
 
   import Instances._
@@ -82,7 +93,7 @@ class ParserSyntaxSpec extends Specification {
     s => s.headOption.map(c => s.drop(1) -> List(c)).getOrElse("" -> Nil)
 
   // iso that formats the char `x` as `char(x)`
-  private val describe: Iso[Option, Option, Char, String] =
+  private val describe: iso.Iso[Char, String] =
     iso.lift("char(" + _ + ")", _.drop(5).headOption.getOrElse(0))
 
   "isoMap" should {
@@ -101,8 +112,8 @@ class ParserSyntaxSpec extends Specification {
   }
 
   "combinators" >> {
-    def eq(c: Char): Char => Option[Char]            = Some(_).filter(_ == c)
-    def is(c: Char): Iso[Option, Option, Char, Char] = iso.liftF(eq(c), eq(c))
+    def eq(c: Char): Char => Option[Char] = Some(_).filter(_ == c)
+    def is(c: Char): iso.Iso[Char, Char]  = iso.liftF(eq(c), eq(c))
 
     "and (product)" in {
       (char /\ char).apply("a") must_=== (""  -> List())

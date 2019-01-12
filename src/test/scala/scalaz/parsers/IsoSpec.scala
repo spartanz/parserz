@@ -7,12 +7,10 @@ import scalaz.tc._
 
 class IsoSpec extends Specification {
 
-  private type TFun[A, B] = A => Option[B]
-  private type TIso[A, B] = Iso[Option, Option, A, B]
-  private object TIso extends IsoClass[Option, Option]
-
   private object Instances {
     import scalaz.Scalaz.monadApplicative
+
+    type TFun[A, B] = A => Option[B]
 
     implicit val fun1Category: Category[TFun] = instanceOf(
       new CategoryClass[TFun] {
@@ -39,6 +37,9 @@ class IsoSpec extends Specification {
 
   import Instances._
 
+  private val TIso = IsoClass[Option, Option]
+  private type TIso[A, B] = TIso.Iso[A, B]
+
   private def verify[A, B](iso: TIso[A, B], a: A, b: B) =
     (iso.to(a).get must_=== b)
       .and(iso.from(b).get must_=== a)
@@ -48,8 +49,8 @@ class IsoSpec extends Specification {
     import TIso.Product._
     import TIso._
 
-    "id" in {
-      verify(id[Int], 2, 2)
+    "pure" in {
+      verify(pure[Int], 2, 2)
     }
 
     "lift" in {
@@ -116,11 +117,11 @@ class IsoSpec extends Specification {
       verify(ignore(5), 5, ())
     }
 
-    "id" in {
+    "pure" in {
       val iso1: TIso[Unit, Int] = create(5)
       val iso2: TIso[Int, Unit] = ignore(5)
-      verify(iso1 >>> id[Int], (), 5)
-      verify(iso2 <<< id[Int], 5, ())
+      verify(iso1 >>> pure[Int], (), 5)
+      verify(iso2 <<< pure[Int], 5, ())
     }
 
     "lift" in {
