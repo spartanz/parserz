@@ -5,7 +5,7 @@ import scalaz.data.{ ~>, ∀ }
 import scalaz.tc.FoldableClass.{ DeriveFoldMap, DeriveToList }
 import scalaz.tc._
 
-class Simplest2Spec extends Specification {
+class ParsingSimplestSpec extends Specification {
 
   object ScalazInstances {
     import scalaz.Scalaz.monadApplicative
@@ -44,16 +44,16 @@ class Simplest2Spec extends Specification {
     case class Sum(e1: Expression, e2: Expression) extends Expression
   }
 
-  object Ex {
+  object Example {
     import ScalazInstances._
     import Syntax._
     import EquivInstances._
 
-    val start: TestClass[Option, Option] = TestClass[Option, Option]
+    val parsing: Parsing[Option, Option] = Parsing[Option, Option]
 
-    import start.Codec
-    import start.Equiv
-    import start.Equiv.Product._
+    import parsing.Codec
+    import parsing.Equiv
+    import parsing.Equiv.Product._
 
     object EquivInstances {
 
@@ -83,15 +83,15 @@ class Simplest2Spec extends Specification {
       }
     }
 
-    val constantIso: Equiv[Int, Constant] =
+    val constantEq: Equiv[Int, Constant] =
       Equiv.lift(Constant, _.value)
 
-    val constantExpressionIso: Equiv[Constant, Expression] = unsafe(
+    val constantExpressionEq: Equiv[Constant, Expression] = unsafe(
       { case a               => a },
       { case n @ Constant(_) => n }
     )
 
-    val sumExpressionIso: Equiv[Expression /\ (Char /\ Expression), Expression] = unsafe(
+    val sumExpressionEq: Equiv[Expression /\ (Char /\ Expression), Expression] = unsafe(
       { case (e1, (_, e2)) => Sum(e1, e2) },
       { case Sum(e1, e2)   => e1 -> ('+' -> e2) }
     )
@@ -111,20 +111,20 @@ class Simplest2Spec extends Specification {
 
     val integer: C[Int] = digit ∘ Equiv.lift(_.toString.toInt, _.toString.head)
 
-    val constant: C[Constant] = integer ∘ constantIso
+    val constant: C[Constant] = integer ∘ constantEq
 
-    val case0: C[Expression] = constant ∘ constantExpressionIso
+    val case0: C[Expression] = constant ∘ constantExpressionEq
 
-    val case1: C[Expression] = (case0 ~ (plus ~ case0).many) ∘ foldL(sumExpressionIso)
+    val case1: C[Expression] = (case0 ~ (plus ~ case0).many) ∘ foldL(sumExpressionEq)
 
     lazy val expression: C[Expression] = case1
   }
 
   def parse(s: String): Option[(List[Char], Syntax.Expression)] =
-    Ex.expression.eq.to(s.toCharArray.toList)
+    Example.expression.eq.to(s.toCharArray.toList)
 
   def print(e: Syntax.Expression): Option[String] =
-    Ex.expression.eq.from((Nil, e)).map(_.reverse.toArray).map(String.valueOf)
+    Example.expression.eq.from((Nil, e)).map(_.reverse.toArray).map(String.valueOf)
 
   "Simplest parser" should {
     import Syntax._

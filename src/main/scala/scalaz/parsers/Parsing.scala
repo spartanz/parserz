@@ -4,13 +4,13 @@ import scalaz.data.~>
 import scalaz.tc.ProfunctorClass.DeriveDimap
 import scalaz.tc._
 
-object TestClass {
+object Parsing {
 
   def apply[F[_]: Applicative, G[_]: Applicative](
     implicit C1_ : Category[λ[(α, β) => α => F[β]]],
     C2_ : Category[λ[(α, β) => α => G[β]]]
-  ): TestClass[F, G] =
-    new TestClass[F, G] {
+  ): Parsing[F, G] =
+    new Parsing[F, G] {
       override val F: Applicative[F]                    = implicitly
       override val G: Applicative[G]                    = implicitly
       override val C1: Category[λ[(α, β) => α => F[β]]] = implicitly
@@ -18,7 +18,7 @@ object TestClass {
     }
 }
 
-sealed trait TestClass[F[_], G[_]] {
+sealed trait Parsing[F[_], G[_]] {
 
   implicit protected val F: Applicative[F]
   implicit protected val G: Applicative[G]
@@ -63,11 +63,12 @@ sealed trait TestClass[F[_], G[_]] {
     }
   }
 
-  def transform[M[_]](
+  private def transform[M[_]](
     implicit M: Applicative[M],
     C: Category[λ[(α, β) => α => M[β]]]
   ): Transform[λ[(α, β) => α => M[β]]] = instanceOf(
     new TransformClass[λ[(α, β) => α => M[β]]] with DeriveDimap[λ[(α, β) => α => M[β]]] {
+
       override def id[A]: A => M[A]                                        = C.id
       override def compose[A, B, C](f: B => M[C], g: A => M[B]): A => M[C] = C.compose(f, g)
 
