@@ -1,7 +1,6 @@
 package scalaz.parsers
 
 import scalaz.data.~>
-import scalaz.tc.ProfunctorClass.DeriveDimap
 import scalaz.tc._
 
 object Parsing {
@@ -20,104 +19,19 @@ object Parsing {
 
 sealed trait Parsing[F[_], G[_]] {
 
-  implicit protected val F: Applicative[F]
-  implicit protected val G: Applicative[G]
-  implicit protected val C1: Category[λ[(α, β) => α => F[β]]]
-  implicit protected val C2: Category[λ[(α, β) => α => G[β]]]
+  protected val F: Applicative[F]
+  protected val G: Applicative[G]
+  protected val C1: Category[λ[(α, β) => α => F[β]]]
+  protected val C2: Category[λ[(α, β) => α => G[β]]]
 
-  type Transform[=>:[_, _]] = InstanceOf[TransformClass[=>:]]
-
-  sealed trait TransformClass[=>:[_, _]] extends StrongClass[=>:] with CategoryClass[=>:] {
-
-    def duplicate[A]: A =>: (A, A)
-    def swap[A, B]: (A, B) =>: (B, A)
-    def dropFirst[A, B]: (A, B) =>: B
-
-    def dropSecond[A, B]: (A, B) =>: A =
-      compose[(A, B), (B, A), A](dropFirst, swap)
-
-    def combine[A, B, C](ab: A =>: B, ac: A =>: C): A =>: (B, C) =
-      compose(compose(first[A, B, C](ab), second[A, C, A](ac)), duplicate[A])
-
-    // todo: this is correct but insane
-    def conjunction[A, B, C, D](ab: A =>: B, cd: C =>: D): (A, C) =>: (B, D) = {
-      val x3: (A, C) =>: (C, B)                     = compose(swap, first[A, B, C](ab))
-      val x4: (A, C) =>: (A, D)                     = second[C, D, A](cd)
-      val x5: (A, C) =>: ((C, B), (A, D))           = combine(x3, x4)
-      val x6: ((C, B), (A, D)) =>: (A, ((C, B), D)) = swap2[(C, B), A, D]
-      val x7: (A, ((C, B), D)) =>: (D, (C, B)) =
-        compose(swap[(C, B), D], dropFirst[A, ((C, B), D)])
-      val x8: (D, (C, B)) =>: (C, (D, B)) = swap2[D, C, B]
-      val x9: (C, (D, B)) =>: (B, D)      = compose(swap[D, B], dropFirst[C, (D, B)])
-      val x0: (A, C) =>: (B, D)           = compose(compose(compose(compose(x9, x8), x7), x6), x5)
-      x0
-    }
-
-    def disjunction[A, B, C, D](ab: A =>: B, cd: C =>: D): (A \/ C) =>: (B \/ D)
-
-    def swap2[A, B, C]: (A, (B, C)) =>: (B, (A, C)) = {
-      val a = dropSecond[A, (B, C)]
-      val b = compose(dropSecond[B, C], dropFirst[A, (B, C)])
-      val c = compose(dropFirst[B, C], dropFirst[A, (B, C)])
-      combine(b, combine(a, c))
-    }
-  }
-
-  private def transform[M[_]](
-    implicit M: Applicative[M],
-    C: Category[λ[(α, β) => α => M[β]]]
-  ): Transform[λ[(α, β) => α => M[β]]] = instanceOf(
-    new TransformClass[λ[(α, β) => α => M[β]]] with DeriveDimap[λ[(α, β) => α => M[β]]] {
-
-      override def id[A]: A => M[A]                                        = C.id
-      override def compose[A, B, C](f: B => M[C], g: A => M[B]): A => M[C] = C.compose(f, g)
-
-      override def first[A, B, C](pab: A => M[B]): ((A, C)) => M[(B, C)] = {
-        case (a, c) => M.map(pab(a))((_, c))
-      }
-      override def second[A, B, C](pab: A => M[B]): ((C, A)) => M[(C, B)] = {
-        case (c, a) => M.map(pab(a))((c, _))
-      }
-
-      override def lmap[A, B, C](fab: A => M[B])(ca: C => A): C => M[B] =
-        c => fab(ca(c))
-      override def rmap[A, B, C](fab: A => M[B])(bc: B => C): A => M[C] =
-        a => M.map(fab(a))(bc)
-
-      override def duplicate[A]: A => M[(A, A)] =
-        a => M.pure((a, a))
-      override def swap[A, B]: ((A, B)) => M[(B, A)] = {
-        case (a, b) => M.pure((b, a))
-      }
-      override def dropFirst[A, B]: ((A, B)) => M[B] = {
-        case (_, b) => M.pure(b)
-      }
-      override def dropSecond[A, B]: ((A, B)) => M[A] = {
-        case (a, _) => M.pure(a)
-      }
-
-      override def combine[A, B, C](ab: A => M[B], ac: A => M[C]): A => M[(B, C)] =
-        a => M.ap(ab(a))(M.map(ac(a))(c => b => (b, c)))
-
-      override def conjunction[A, B, C, D](ab: A => M[B], cd: C => M[D]): ((A, C)) => M[(B, D)] = {
-        case (a, c) => M.ap(ab(a))(M.map(cd(c))(d => b => (b, d)))
-      }
-
-      override def disjunction[A, B, C, D](ab: A => M[B], cd: C => M[D]): A \/ C => M[B \/ D] = {
-        case Left(a)  => M.map(ab(a))(Left(_))
-        case Right(c) => M.map(cd(c))(Right(_))
-      }
-    }
-  )
-
-  sealed trait Equiv[A, B] { self =>
+  sealed trait Equiv[A, B] {
     def to: A => F[B]
     def from: B => G[A]
   }
 
   object Equiv {
-    private[parsers] val AB: Transform[λ[(α, β) => α => F[β]]] = transform[F]
-    private[parsers] val BA: Transform[λ[(α, β) => α => G[β]]] = transform[G]
+    private[parsers] val AB: Transform[λ[(α, β) => α => F[β]]] = Transform[F](F, C1)
+    private[parsers] val BA: Transform[λ[(α, β) => α => G[β]]] = Transform[G](G, C2)
 
     def lift[A, B](ab: A => B, ba: B => A): Equiv[A, B] =
       liftF(
