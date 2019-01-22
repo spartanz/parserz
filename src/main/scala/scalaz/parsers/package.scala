@@ -9,4 +9,6 @@ package object parsers {
 
   type Alternative[F[_]]    = InstanceOf[AlternativeClass[F]]
   type ProductFunctor[F[_]] = InstanceOf[ProductFunctorClass[F]]
+
+  type Transform[=>:[_, _]] = InstanceOf[TransformClass[=>:]]
 }
