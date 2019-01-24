@@ -20,6 +20,8 @@ trait TransformClass[=>:[_, _]] extends StrongClass[=>:] with CategoryClass[=>:]
   def leftchoice[A, B, C](pab: A =>: B): (A \/ C) =>: (B \/ C)
   def rightchoice[A, B, C](pab: A =>: B): (C \/ A) =>: (C \/ B)
 
+  def pure[A]: A =>: A = id
+
   def conjunction[A, B, C, D](ab: A =>: B, cd: C =>: D): (A /\ C) =>: (B /\ D)
   def disjunction[A, B, C, D](ab: A =>: B, cd: C =>: D): (A \/ C) =>: (B \/ D)
 }
