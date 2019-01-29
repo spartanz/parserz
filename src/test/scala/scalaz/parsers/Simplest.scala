@@ -136,27 +136,27 @@ object Simplest {
     val integer: P[Int] =
       digit ∘ parsing.Equiv.lift(_.toString.toInt, _.toString.head)
 
-    val constantEquiv: Equiv[Int, Constant] =
+    val constantEq: Equiv[Int, Constant] =
       parsing.Equiv.lift(Constant, _.value)
 
-    val constantExpressionEquiv: Equiv[Constant, Expression] = unsafe(
+    val constantExpressionEq: Equiv[Constant, Expression] = unsafe(
       { case a               => a },
       { case n @ Constant(_) => n }
     )
 
-    val sumExpressionEquiv: Equiv[Expression /\ (Char /\ Expression), Expression] = unsafe(
+    val sumExpressionEq: Equiv[Expression /\ (Char /\ Expression), Expression] = unsafe(
       { case (e1, (_, e2)) => Sum(e1, e2) },
       { case Sum(e1, e2)   => e1 -> ('+' -> e2) }
     )
 
     val constant: P[Constant] =
-      integer ∘ constantEquiv
+      integer ∘ constantEq
 
     val case0: P[Expression] =
-      constant ∘ constantExpressionEquiv
+      constant ∘ constantExpressionEq
 
     val case1: P[Expression] =
-      (case0 /\ (plus /\ case0).many) ∘ foldL(sumExpressionEquiv)
+      (case0 /\ (plus /\ case0).many) ∘ foldL(sumExpressionEq)
 
     lazy val expression: P[Expression] =
       case1

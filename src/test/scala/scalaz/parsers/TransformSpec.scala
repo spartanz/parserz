@@ -117,9 +117,11 @@ class TransformSpec extends Specification {
       // Choice
       "leftchoice" in {
         t.leftchoice[Int, String, Long](_.toString)(Left(1)) must_== Left("1")
+        t.leftchoice[Int, String, Long](_.toString)(Right(1L)) must_== Right(1L)
       }
       "rightchoice" in {
         t.rightchoice[Int, String, Long](_.toString)(Right(1)) must_== Right("1")
+        t.rightchoice[Int, String, Long](_.toString)(Left(1L)) must_== Left(1L)
       }
     }
 

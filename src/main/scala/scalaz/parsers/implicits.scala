@@ -4,7 +4,7 @@ import scalaz.tc.{ Category, CategoryClass, Monad, instanceOf }
 
 object implicits {
 
-  implicit def monadKleisliCategory[F[_]](F: Monad[F]): Category[λ[(α, β) => α => F[β]]] =
+  implicit def monadKleisliCategory[F[_]](implicit F: Monad[F]): Category[λ[(α, β) => α => F[β]]] =
     instanceOf(
       new CategoryClass[λ[(α, β) => α => F[β]]] {
         override def id[A]: A => F[A] =

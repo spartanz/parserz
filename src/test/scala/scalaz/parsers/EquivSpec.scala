@@ -1,41 +1,11 @@
 package scalaz.parsers
 
 import org.specs2.mutable.Specification
-import scalaz.data.{ ~>, ∀ }
-import scalaz.tc.FoldableClass.{ DeriveFoldMap, DeriveToList }
-import scalaz.tc._
 
 class EquivSpec extends Specification {
 
-  private object Instances {
-    import scalaz.Scalaz.monadApplicative
-
-    type TFun[A, B] = A => Option[B]
-
-    implicit val fun1Category: Category[TFun] = instanceOf(
-      new CategoryClass[TFun] {
-        def id[A]: TFun[A, A]                                          = Option.apply
-        def compose[A, B, C](f: TFun[B, C], g: TFun[A, B]): TFun[A, C] = g(_).flatMap(f)
-      }
-    )
-
-    implicit val applicativeOption: Applicative[Option] =
-      monadApplicative[Option](implicitly)
-
-    implicit val foldableOption: Foldable[Option] = instanceOf(
-      new FoldableClass[Option] with DeriveFoldMap[Option] with DeriveToList[Option] {
-        override def foldRight[A, B](fa: Option[A], z: => B)(f: (A, => B) => B): B =
-          fa.fold(z)(f(_, z))
-        override def foldLeft[A, B](fa: Option[A], z: B)(f: (B, A) => B): B =
-          fa.fold(z)(f(z, _))
-      }
-    )
-
-    implicit val OptionToOption: Option ~> Option =
-      ∀.mk[Option ~> Option].from(identity)
-  }
-
-  import Instances._
+  import implicits._
+  import TCInstances._
 
   private val parsing: Parsing[Option, Option] = Parsing()
   private type Equiv[A, B] = parsing.Equiv[A, B]
@@ -49,13 +19,17 @@ class EquivSpec extends Specification {
     import parsing.Equiv._
     import parsing.Equiv.Product._
 
-    "pure" in {
-      verify(id[Int], 2, 2)
+    "apply" in {
+      verify(apply[Int, String](i => Some(i.toString), s => Some(s.toInt)), 2, "2")
     }
 
     "lift" in {
       verify(lift[Int, Int](_ + 1, _ - 1), 3, 4)
       verify(liftF[Int, Int](a => Some(a + 1), b => Some(b - 1)), 3, 4)
+    }
+
+    "id" in {
+      verify(id[Int], 2, 2)
     }
 
     "unit" in {

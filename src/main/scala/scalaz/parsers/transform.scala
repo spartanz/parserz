@@ -96,9 +96,7 @@ object Transform {
       monadKleisliCategory[F](implicitly)
     )
 
-  trait DeriveTransformFunctions[=>:[_, _]]
-      extends TransformClass[=>:]
-      with Alt[DeriveTransformFunctions[=>:]] {
+  trait DeriveTransformFunctions[=>:[_, _]] extends TransformClass[=>:] {
 
     override def combine[A, B, C](ab: A =>: B, ac: A =>: C): A =>: (B /\ C) =
       compose(compose(first[A, B, C](ab), second[A, C, A](ac)), duplicate[A])
@@ -126,6 +124,4 @@ object Transform {
       x8
     }
   }
-
-  trait Alt[D <: Alt[D]]
 }
