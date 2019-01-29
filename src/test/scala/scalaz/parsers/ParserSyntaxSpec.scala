@@ -10,8 +10,8 @@ class ParserSyntaxSpec extends Specification {
   private object Parser extends ParserSyntax[Parser, Option, Option] {
     import Instances._
 
-    override val iso: IsoClass[Option, Option] =
-      IsoClass[Option, Option]
+    override val parsing: Parsing[Option, Option] =
+      Parsing[Option, Option]
 
     override def char: Parser[Char] =
       s => s.headOption.fold("" -> List.empty[Char])(h => s.drop(1) -> List(h))
@@ -25,7 +25,7 @@ class ParserSyntaxSpec extends Specification {
     override def right[A, B](pb: Parser[B]): Parser[A \/ B] =
       s => pb(s) match { case (s1, bs) => s1 -> bs.map(Right(_)) }
 
-    override def isoMap[A, B](pa: Parser[A])(instance: iso.Iso[A, B]): Parser[B] =
+    override def imap[A, B](pa: Parser[A])(instance: parsing.Equiv[A, B]): Parser[B] =
       s => pa(s) match { case (s1, aa) => s1 -> aa.map(instance.to).collect { case Some(b) => b } }
 
     override def delay[A](pa: => Parser[A]): Parser[A] =
@@ -92,15 +92,15 @@ class ParserSyntaxSpec extends Specification {
   private val char: Parser[Char] =
     s => s.headOption.map(c => s.drop(1) -> List(c)).getOrElse("" -> Nil)
 
-  // iso that formats the char `x` as `char(x)`
-  private val describe: iso.Iso[Char, String] =
-    iso.lift("char(" + _ + ")", _.drop(5).headOption.getOrElse(0))
+  // formats char `x` as `char(x)`
+  private val describe: parsing.Equiv[Char, String] =
+    parsing.Equiv.lift("char(" + _ + ")", _.drop(5).headOption.getOrElse(0))
 
-  "isoMap" should {
-    "map over parsed value with an iso" in {
-      isoMap(char)(describe)("a") must_=== ("" -> List("char(a)"))
-      (char ∘ describe)("a") must_=== (""      -> List("char(a)"))
-      (char ∘ describe)("ab") must_=== ("b"    -> List("char(a)"))
+  "imap" should {
+    "map over parsed value with an instance of Equiv" in {
+      imap(char)(describe)("a") must_=== ("" -> List("char(a)"))
+      (char ∘ describe)("a") must_=== (""    -> List("char(a)"))
+      (char ∘ describe)("ab") must_=== ("b"  -> List("char(a)"))
     }
   }
 
@@ -112,8 +112,8 @@ class ParserSyntaxSpec extends Specification {
   }
 
   "combinators" >> {
-    def eq(c: Char): Char => Option[Char] = Some(_).filter(_ == c)
-    def is(c: Char): iso.Iso[Char, Char]  = iso.liftF(eq(c), eq(c))
+    def eq(c: Char): Char => Option[Char]      = Some(_).filter(_ == c)
+    def is(c: Char): parsing.Equiv[Char, Char] = parsing.Equiv.liftF(eq(c), eq(c))
 
     "and (product)" in {
       (char /\ char).apply("a") must_=== (""  -> List())

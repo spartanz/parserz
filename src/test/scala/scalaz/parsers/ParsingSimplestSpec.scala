@@ -49,8 +49,9 @@ class ParsingSimplestSpec extends Specification {
     import Syntax._
     import EquivInstances._
 
-    val parsing: Parsing[Option, Option] = Parsing[Option, Option]
+    val parsing: Parsing[Option, Option] = Parsing()
 
+    import parsing.syntax._
     import parsing.Codec
     import parsing.Equiv
     import parsing.Equiv.Product._

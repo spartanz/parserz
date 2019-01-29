@@ -91,38 +91,39 @@ object Simplest {
   ): P[Syntax.Expression] = {
     import Syntax._
     import P._
-    import IsoInstances._
+    import EquivInstances._
     import ScalazInstances._
 
-    type PIso[A, B] = iso.Iso[A, B]
+    type Equiv[A, B] = parsing.Equiv[A, B]
 
-    object IsoInstances {
-      import iso._
-      import iso.Product._
+    object EquivInstances {
+      import parsing.syntax._
+      import parsing.Equiv._
+      import parsing.Equiv.Product._
 
-      def subset[A](p: A => Boolean): PIso[A, A] =
+      def subset[A](p: A => Boolean): Equiv[A, A] =
         liftF(Some(_).filter(p), Some(_).filter(p))
 
-      def unsafe[A, B](ab: PartialFunction[A, B], ba: PartialFunction[B, A]): PIso[A, B] =
+      def unsafe[A, B](ab: PartialFunction[A, B], ba: PartialFunction[B, A]): Equiv[A, B] =
         liftF(ab.lift, ba.lift)
 
-      def nil[A]: PIso[Unit, List[A]] = unsafe(
+      def nil[A]: Equiv[Unit, List[A]] = unsafe(
         { case ()  => Nil },
         { case Nil => () }
       )
 
-      def nel[A]: PIso[(A, List[A]), List[A]] = unsafe(
+      def nel[A]: Equiv[(A, List[A]), List[A]] = unsafe(
         { case (x, xs) => x :: xs },
         { case x :: xs => (x, xs) }
       )
 
-      def foldL[A, B](iso: PIso[A ⓧ B, A]): PIso[A ⓧ List[B], A] = {
-        def step: PIso[A ⓧ List[B], A ⓧ List[B]] = {
-          val first: PIso[A ⓧ List[B], A ⓧ (B ⓧ List[B])] = pure[A] ⓧ ~nel[B]
-          val app: PIso[A ⓧ B ⓧ List[B], A ⓧ List[B]]     = iso ⓧ pure[List[B]]
+      def foldL[A, B](equiv: Equiv[A ⓧ B, A]): Equiv[A ⓧ List[B], A] = {
+        def step: Equiv[A ⓧ List[B], A ⓧ List[B]] = {
+          val first: Equiv[A ⓧ List[B], A ⓧ (B ⓧ List[B])] = id[A] ⓧ ~nel[B]
+          val app: Equiv[A ⓧ B ⓧ List[B], A ⓧ List[B]]     = equiv ⓧ id[List[B]]
           first >>> associate >>> app
         }
-        iterate(step) >>> (pure[A] ⓧ ~nil[B]) >>> ~unitR[A]
+        iterate(step) >>> (id[A] ⓧ ~nil[B]) >>> ~unitR[A]
       }
     }
 
@@ -133,29 +134,29 @@ object Simplest {
       char ∘ subset(_ == '+')
 
     val integer: P[Int] =
-      digit ∘ iso.lift(_.toString.toInt, _.toString.head)
+      digit ∘ parsing.Equiv.lift(_.toString.toInt, _.toString.head)
 
-    val constantIso: PIso[Int, Constant] =
-      iso.lift(Constant, _.value)
+    val constantEquiv: Equiv[Int, Constant] =
+      parsing.Equiv.lift(Constant, _.value)
 
-    val constantExpressionIso: PIso[Constant, Expression] = unsafe(
+    val constantExpressionEquiv: Equiv[Constant, Expression] = unsafe(
       { case a               => a },
       { case n @ Constant(_) => n }
     )
 
-    val sumExpressionIso: PIso[Expression /\ (Char /\ Expression), Expression] = unsafe(
+    val sumExpressionEquiv: Equiv[Expression /\ (Char /\ Expression), Expression] = unsafe(
       { case (e1, (_, e2)) => Sum(e1, e2) },
       { case Sum(e1, e2)   => e1 -> ('+' -> e2) }
     )
 
     val constant: P[Constant] =
-      integer ∘ constantIso
+      integer ∘ constantEquiv
 
     val case0: P[Expression] =
-      constant ∘ constantExpressionIso
+      constant ∘ constantExpressionEquiv
 
     val case1: P[Expression] =
-      (case0 /\ (plus /\ case0).many) ∘ foldL(sumExpressionIso)
+      (case0 /\ (plus /\ case0).many) ∘ foldL(sumExpressionEquiv)
 
     lazy val expression: P[Expression] =
       case1
@@ -166,8 +167,8 @@ object Simplest {
   object Parser extends ParserSyntax[Parser, Option, Option] {
     import ScalazInstances._
 
-    override val iso: IsoClass[Option, Option] =
-      IsoClass[Option, Option]
+    override val parsing: Parsing[Option, Option] =
+      Parsing[Option, Option]
 
     override def char: Parser[Char] = {
       case head :: tail => Right(tail -> head)
@@ -183,7 +184,7 @@ object Simplest {
     override def right[A, B](pb: Parser[B]): Parser[A \/ B] =
       pb(_).map { case (s1, b) => s1 -> Right(b) }
 
-    override def isoMap[A, B](pa: Parser[A])(instance: iso.Iso[A, B]): Parser[B] =
+    override def imap[A, B](pa: Parser[A])(instance: parsing.Equiv[A, B]): Parser[B] =
       pa(_).flatMap {
         case (rest, v) => instance.to(v).fold[Result[B]](Left(()))(b => Right(rest -> b))
       }
@@ -195,8 +196,8 @@ object Simplest {
   object Printer extends ParserSyntax[Printer, Option, Option] {
     import ScalazInstances._
 
-    override val iso: IsoClass[Option, Option] =
-      IsoClass[Option, Option]
+    override val parsing: Parsing[Option, Option] =
+      Parsing[Option, Option]
 
     override def char: Printer[Char] =
       _.toString
@@ -214,7 +215,7 @@ object Simplest {
       case Right(b) => pb(b)
     }
 
-    override def isoMap[A, B](pa: Printer[A])(instance: iso.Iso[A, B]): Printer[B] =
+    override def imap[A, B](pa: Printer[A])(instance: parsing.Equiv[A, B]): Printer[B] =
       instance.from(_).fold("")(pa)
 
     override def delay[A](pa: => Printer[A]): Printer[A] =

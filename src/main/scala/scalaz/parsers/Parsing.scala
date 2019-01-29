@@ -1,19 +1,28 @@
 package scalaz.parsers
 
+import scalaz.Scalaz.monadApplicative
 import scalaz.data.~>
 import scalaz.tc._
 
 object Parsing {
 
-  def apply[F[_]: Applicative, G[_]: Applicative](
-    implicit C1_ : Category[λ[(α, β) => α => F[β]]],
-    C2_ : Category[λ[(α, β) => α => G[β]]]
+  def apply[F[_]: Applicative, G[_]: Applicative]()(
+    implicit C1: Category[λ[(α, β) => α => F[β]]],
+    C2: Category[λ[(α, β) => α => G[β]]]
   ): Parsing[F, G] =
     new Parsing[F, G] {
-      override val F: Applicative[F]                    = implicitly
-      override val G: Applicative[G]                    = implicitly
-      override val C1: Category[λ[(α, β) => α => F[β]]] = implicitly
-      override val C2: Category[λ[(α, β) => α => G[β]]] = implicitly
+      override val F: Applicative[F]                     = implicitly
+      override val G: Applicative[G]                     = implicitly
+      override val AB: Transform[λ[(α, β) => α => F[β]]] = Transform(F, C1)
+      override val BA: Transform[λ[(α, β) => α => G[β]]] = Transform(G, C2)
+    }
+
+  def apply[F[_], G[_]](F_ : Monad[F], G_ : Monad[G]): Parsing[F, G] =
+    new Parsing[F, G] {
+      override val F: Applicative[F]                     = monadApplicative[F](F_)
+      override val G: Applicative[G]                     = monadApplicative[G](G_)
+      override val AB: Transform[λ[(α, β) => α => F[β]]] = Transform(F_)
+      override val BA: Transform[λ[(α, β) => α => G[β]]] = Transform(G_)
     }
 }
 
@@ -21,8 +30,10 @@ sealed trait Parsing[F[_], G[_]] {
 
   protected val F: Applicative[F]
   protected val G: Applicative[G]
-  protected val C1: Category[λ[(α, β) => α => F[β]]]
-  protected val C2: Category[λ[(α, β) => α => G[β]]]
+  protected val AB: Transform[λ[(α, β) => α => F[β]]]
+  protected val BA: Transform[λ[(α, β) => α => G[β]]]
+
+  object syntax extends EquivSyntax
 
   sealed trait Equiv[A, B] {
     def to: A => F[B]
@@ -30,8 +41,7 @@ sealed trait Parsing[F[_], G[_]] {
   }
 
   object Equiv {
-    private[parsers] val AB: Transform[λ[(α, β) => α => F[β]]] = Transform[F](F, C1)
-    private[parsers] val BA: Transform[λ[(α, β) => α => G[β]]] = Transform[G](G, C2)
+    import syntax._
 
     def apply[A, B](ab: A => F[B], ba: B => G[A]): Equiv[A, B] =
       new Equiv[A, B] {
@@ -40,21 +50,83 @@ sealed trait Parsing[F[_], G[_]] {
       }
 
     def lift[A, B](ab: A => B, ba: B => A): Equiv[A, B] =
-      Equiv(
-        ab.andThen(AB.pure),
-        ba.andThen(BA.pure)
-      )
+      id[A].imap(ab, ba)
 
     def liftF[A, B](ab: A => F[B], ba: B => G[A]): Equiv[A, B] =
       Equiv(ab, ba)
 
-    implicit class EquivOps[A, B](self: Equiv[A, B]) {
+    def id[A]: Equiv[A, A] =
+      Equiv(AB.id, BA.id)
+
+    def ignore[A](a: A): Equiv[A, Unit] =
+      lift(_ => (), _ => a)
+
+    def create[A](a: A): Equiv[Unit, A] =
+      lift(_ => a, _ => ())
+
+    def list[A]: Equiv[A /\ List[A] \/ Unit, List[A]] = lift(
+      {
+        case Right(_)      => Nil
+        case Left((a, as)) => a :: as
+      }, {
+        case Nil     => Right(())
+        case a :: as => Left((a, as))
+      }
+    )
+
+    def iterate[A](equiv: Equiv[A, A])(implicit F0: Foldable[F], G0: Foldable[G]): Equiv[A, A] = {
+      def step[L[_]](f: A => L[A], state: A)(implicit L: Foldable[L]): A =
+        L.foldLeft(f(state), state) { case (_, s) => step(f, s) }
+
+      lift(step(equiv.to, _), step(equiv.from, _))
+    }
+
+    object Product {
+      type ⓧ[A, B] = (A, B)
+      type Id      = Unit
+
+      def unitL[A]: Equiv[A, Id ⓧ A] =
+        id[A].imap(((), _), _._2)
+
+      def unitR[A]: Equiv[A, A ⓧ Id] =
+        id[A].imap((_, ()), _._1)
+
+      def commute[A, B]: Equiv[A ⓧ B, B ⓧ A] =
+        Equiv(AB.swap, BA.swap)
+
+      def associate[A, B, C]: Equiv[A ⓧ (B ⓧ C), A ⓧ B ⓧ C] =
+        id[A ⓧ (B ⓧ C)].imap(
+          { case (a, (b, c)) => ((a, b), c) },
+          { case ((a, b), c) => (a, (b, c)) }
+        )
+
+      def flatten[A, B, C]: Equiv[A ⓧ (B ⓧ C), (A, B, C)] =
+        id[A ⓧ (B ⓧ C)].imap(
+          { case (a, (b, c)) => (a, b, c) },
+          { case (a, b, c)   => (a, (b, c)) }
+        )
+    }
+  }
+
+  trait EquivSyntax {
+    implicit class ToEquivOps[A, B](self: Equiv[A, B]) {
 
       def >>> [C](that: Equiv[B, C]): Equiv[A, C] =
         Equiv(
           AB.compose(that.to, self.to),
           BA.compose(self.from, that.from)
         )
+
+      //  def >>> [C](
+      //    that: Equiv[B, C]
+      //  )(implicit F: Bind[F], G: Bind[G]): Equiv[A, C] =
+      //    new Equiv[A, C] {
+      //      def to: A => F[C]   = a => F.flatMap(self.to(a))(that.to)
+      //      def from: C => G[A] = c => G.flatMap(that.from(c))(self.from)
+      //    }
+
+      def <<< [C](that: Equiv[C, A]): Equiv[C, B] =
+        that >>> self
 
       def imap[C](bc: B => C, cb: C => B): Equiv[A, C] =
         Equiv(
@@ -80,6 +152,9 @@ sealed trait Parsing[F[_], G[_]] {
           BA.conjunction(self.from, that.from)
         )
 
+      def ⓧ [C, D](that: Equiv[C, D]): Equiv[A /\ C, B /\ D] =
+        /\(that)
+
       def \/ [C, D](that: Equiv[C, D]): Equiv[A \/ C, B \/ D] =
         Equiv(
           AB.disjunction(self.to, that.to),
@@ -91,45 +166,14 @@ sealed trait Parsing[F[_], G[_]] {
           b => GF.apply(self.from(b)),
           a => FG.apply(self.to(a))
         )
-    }
 
-    def list[A]: Equiv[A /\ List[A] \/ Unit, List[A]] = lift(
-      {
-        case Right(_)      => Nil
-        case Left((a, as)) => a :: as
-      }, {
-        case Nil     => Right(())
-        case a :: as => Left((a, as))
-      }
-    )
-
-    def iterate[A](equiv: Equiv[A, A])(implicit F0: Foldable[F], G0: Foldable[G]): Equiv[A, A] = {
-      def step[L[_]](f: A => L[A], state: A)(implicit L: Foldable[L]): A =
-        L.foldLeft(f(state), state) { case (_, s) => step(f, s) }
-
-      lift(step(equiv.to, _), step(equiv.from, _))
-    }
-
-    object Product {
-      type ⓧ[A, B] = (A, B)
-      type Id      = Unit
-
-      def unitR[A]: Equiv[A, A ⓧ Id] =
-        Equiv(
-          a => AB.pure((a, ())),
-          { case (a, _) => BA.pure(a) }
-        )
-
-      def associate[A, B, C]: Equiv[A ⓧ (B ⓧ C), A ⓧ B ⓧ C] =
-        Equiv(
-          { case (a, (b, c)) => AB.pure(((a, b), c)) },
-          { case ((a, b), c) => BA.pure((a, (b, c))) }
-        )
+      def unary_~(implicit FG: F ~> G, GF: G ~> F): Equiv[B, A] =
+        reverse
     }
   }
 
   case class Codec[I, A](eq: Equiv[I, (I, A)]) { self =>
-    import Equiv._
+    import syntax._
 
     // ProductFunctor functionality
     def ~ [B](that: Codec[I, B]): Codec[I, (A, B)] =
@@ -174,20 +218,14 @@ sealed trait Parsing[F[_], G[_]] {
 
     def many(implicit AF: Alternative[F]): Codec[I, List[A]] = {
       lazy val step: Codec[I, List[A]] =
-        ((self ~ Codec(Equiv(step.eq.to(_), step.eq.from(_)))) | Codec.lift(())) ∘ Equiv.list
+        ((self ~ Codec(Equiv(step.eq.to(_), step.eq.from(_)))) | Codec.pure(())) ∘ Equiv.list
       step
     }
   }
 
   object Codec {
-    import Equiv._
 
-    def lift[I, A](a: A): Codec[I, A] =
-      Codec(
-        Equiv[I, (I, A)](
-          i => AB.pure((i, a)),
-          { case (i, _) => BA.pure(i) }
-        )
-      )
+    def pure[I, A](a: A): Codec[I, A] =
+      Codec(Equiv.lift[I, (I, A)]((_, a), _._1))
   }
 }

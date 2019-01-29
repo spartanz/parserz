@@ -1,6 +1,7 @@
 package scalaz.parsers
 
 import scalaz.Scalaz.monadApplicative
+import scalaz.parsers.implicits.monadKleisliCategory
 import scalaz.tc.ProfunctorClass.DeriveDimap
 import scalaz.tc._
 
@@ -19,8 +20,6 @@ trait TransformClass[=>:[_, _]] extends StrongClass[=>:] with CategoryClass[=>:]
   // todo: extend ChoiceClass[=>:] when scalaz.Disjunction is used
   def leftchoice[A, B, C](pab: A =>: B): (A \/ C) =>: (B \/ C)
   def rightchoice[A, B, C](pab: A =>: B): (C \/ A) =>: (C \/ B)
-
-  def pure[A]: A =>: A = id
 
   def conjunction[A, B, C, D](ab: A =>: B, cd: C =>: D): (A /\ C) =>: (B /\ D)
   def disjunction[A, B, C, D](ab: A =>: B, cd: C =>: D): (A \/ C) =>: (B \/ D)
@@ -94,14 +93,7 @@ object Transform {
   ): Transform[λ[(α, β) => α => F[β]]] =
     apply[F](
       monadApplicative[F](implicitly),
-      instanceOf(
-        new CategoryClass[λ[(α, β) => α => F[β]]] {
-          override def id[A]: A => F[A] =
-            F.pure
-          override def compose[A, B, C](f: B => F[C], g: A => F[B]): A => F[C] =
-            a => F.flatMap(g(a))(f)
-        }
-      )
+      monadKleisliCategory[F](implicitly)
     )
 
   trait DeriveTransformFunctions[=>:[_, _]]
