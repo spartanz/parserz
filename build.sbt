@@ -14,6 +14,7 @@ lazy val root =
   (project in file("."))
     .settings(
       name := "scalaz-parsers",
+      scalaVersion := "2.12.8",
       scalacOptions ++= Seq("-Xsource:2.13"),
       resolvers += "Sonatype OSS Staging".at(
         "https://oss.sonatype.org/content/repositories/staging"

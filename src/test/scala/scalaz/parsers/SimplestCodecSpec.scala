@@ -1,42 +1,8 @@
 package scalaz.parsers
 
 import org.specs2.mutable.Specification
-import scalaz.data.{ ~>, ∀ }
-import scalaz.tc.FoldableClass.{ DeriveFoldMap, DeriveToList }
-import scalaz.tc._
 
-class ParsingSimplestSpec extends Specification {
-
-  object ScalazInstances {
-    import scalaz.Scalaz.monadApplicative
-
-    implicit val applicativeOption: Applicative[Option] =
-      monadApplicative[Option](implicitly)
-
-    implicit val foldableOption: Foldable[Option] = instanceOf(
-      new FoldableClass[Option] with DeriveFoldMap[Option] with DeriveToList[Option] {
-        override def foldRight[A, B](fa: Option[A], z: => B)(f: (A, => B) => B): B =
-          fa.fold(z)(f(_, z))
-        override def foldLeft[A, B](fa: Option[A], z: B)(f: (B, A) => B): B =
-          fa.fold(z)(f(z, _))
-      }
-    )
-
-    implicit val OptionToOption: Option ~> Option =
-      ∀.mk[Option ~> Option].from(identity)
-
-    type PFunction[A, B] = A => Option[B]
-
-    implicit val CategoryOfPartialFunctions: Category[PFunction] = instanceOf(
-      new CategoryClass[PFunction] {
-        override def id[A]: PFunction[A, A] = Option.apply
-        override def compose[A, B, C](
-          f: PFunction[B, C],
-          g: PFunction[A, B]
-        ): PFunction[A, C] = g(_).flatMap(f)
-      }
-    )
-  }
+class SimplestCodecSpec extends Specification {
 
   object Syntax {
     sealed trait Expression
@@ -45,12 +11,14 @@ class ParsingSimplestSpec extends Specification {
   }
 
   object Example {
-    import ScalazInstances._
+    import implicits._
+    import TCInstances._
     import Syntax._
     import EquivInstances._
 
-    val parsing: Parsing[Option, Option] = Parsing[Option, Option]
+    val parsing: Parsing[Option, Option] = Parsing()
 
+    import parsing.syntax._
     import parsing.Codec
     import parsing.Equiv
     import parsing.Equiv.Product._

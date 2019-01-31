@@ -2,7 +2,7 @@ package scalaz.parsers
 
 trait ParserSyntax[P[_], F[_], G[_]] {
 
-  val iso: IsoClass[F, G]
+  val parsing: Parsing[F, G]
 
   def char: P[Char]
 
@@ -18,7 +18,7 @@ trait ParserSyntax[P[_], F[_], G[_]] {
   def or[A, B](pa: P[A], pb: => P[B])(implicit A: Alternative[P]): P[A \/ B] =
     A.or(left(pa), right(pb))
 
-  def isoMap[A, B](pa: P[A])(instance: iso.Iso[A, B]): P[B]
+  def imap[A, B](pa: P[A])(instance: parsing.Equiv[A, B]): P[B]
 
   def delay[A](pa: => P[A]): P[A]
 
@@ -33,11 +33,11 @@ trait ParserSyntax[P[_], F[_], G[_]] {
     def || (other: => P[A])(implicit A: Alternative[P]): P[A] =
       A.or(p, other)
 
-    def ∘ [B](instance: iso.Iso[A, B]): P[B] =
-      isoMap(p)(instance)
+    def ∘ [B](instance: parsing.Equiv[A, B]): P[B] =
+      imap(p)(instance)
 
     def many(implicit P: ProductFunctor[P], A: Alternative[P]): P[List[A]] = {
-      lazy val step: P[List[A]] = (lift(()) \/ (p /\ delay(step))) ∘ iso.list
+      lazy val step: P[List[A]] = ((p /\ delay(step)) \/ lift(())) ∘ parsing.Equiv.list
       step
     }
   }

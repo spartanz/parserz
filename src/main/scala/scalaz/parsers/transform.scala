@@ -1,6 +1,7 @@
 package scalaz.parsers
 
 import scalaz.Scalaz.monadApplicative
+import scalaz.parsers.implicits.monadKleisliCategory
 import scalaz.tc.ProfunctorClass.DeriveDimap
 import scalaz.tc._
 
@@ -92,19 +93,10 @@ object Transform {
   ): Transform[λ[(α, β) => α => F[β]]] =
     apply[F](
       monadApplicative[F](implicitly),
-      instanceOf(
-        new CategoryClass[λ[(α, β) => α => F[β]]] {
-          override def id[A]: A => F[A] =
-            F.pure
-          override def compose[A, B, C](f: B => F[C], g: A => F[B]): A => F[C] =
-            a => F.flatMap(g(a))(f)
-        }
-      )
+      monadKleisliCategory[F](implicitly)
     )
 
-  trait DeriveTransformFunctions[=>:[_, _]]
-      extends TransformClass[=>:]
-      with Alt[DeriveTransformFunctions[=>:]] {
+  trait DeriveTransformFunctions[=>:[_, _]] extends TransformClass[=>:] {
 
     override def combine[A, B, C](ab: A =>: B, ac: A =>: C): A =>: (B /\ C) =
       compose(compose(first[A, B, C](ab), second[A, C, A](ac)), duplicate[A])
@@ -132,6 +124,4 @@ object Transform {
       x8
     }
   }
-
-  trait Alt[D <: Alt[D]]
 }
