@@ -64,12 +64,12 @@ class SimplestCodecSpec extends Specification {
       { case Sum(e1, e2)   => e1 -> ('+' -> e2) }
     )
 
-    type C[A] = Codec[List[Char], A]
+    type C[A] = Codec[String, A]
 
     val char: C[Char] = Codec(
       Equiv.liftF(
-        { case h :: t => Some(t -> h); case Nil => None },
-        { case (l, c) => Some(c :: l) }
+        s => s.headOption.map(s.drop(1) -> _),
+        { case (s, c) => Some(s + c) }
       )
     )
 
@@ -88,11 +88,11 @@ class SimplestCodecSpec extends Specification {
     lazy val expression: C[Expression] = case1
   }
 
-  def parse(s: String): Option[(List[Char], Syntax.Expression)] =
-    Example.expression.eq.to(s.toCharArray.toList)
+  def parse(s: String): Option[(String, Syntax.Expression)] =
+    Example.expression.parse(s)
 
   def print(e: Syntax.Expression): Option[String] =
-    Example.expression.eq.from((Nil, e)).map(_.reverse.toArray).map(String.valueOf)
+    Example.expression.print0(e)
 
   "Simplest parser" should {
     import Syntax._
@@ -102,11 +102,11 @@ class SimplestCodecSpec extends Specification {
     }
 
     "parse a digit into a literal" in {
-      parse("5") must_=== Some(Nil -> Constant(5))
+      parse("5") must_=== Some("" -> Constant(5))
     }
 
     "not parse two digits (because it's indeed simplest)" in {
-      parse("55") must_=== Some(List('5') -> Constant(5))
+      parse("55") must_=== Some("5" -> Constant(5))
     }
 
     "not parse a letter and indicate failure" in {
@@ -118,11 +118,11 @@ class SimplestCodecSpec extends Specification {
     }
 
     "parse sum of 2 numbers" in {
-      parse("5+6") must_=== Some(Nil -> Sum(Constant(5), Constant(6)))
+      parse("5+6") must_=== Some("" -> Sum(Constant(5), Constant(6)))
     }
 
     "parse sum of 3 numbers" in {
-      parse("5+6+7") must_=== Some(Nil -> Sum(Sum(Constant(5), Constant(6)), Constant(7)))
+      parse("5+6+7") must_=== Some("" -> Sum(Sum(Constant(5), Constant(6)), Constant(7)))
     }
   }
 
@@ -145,6 +145,50 @@ class SimplestCodecSpec extends Specification {
     "not print an incorrectly composed expression" in {
       print(Sum(Constant(1), Sum(Constant(2), Constant(3)))) must_=== None
       print(Sum(Sum(Constant(1), Constant(2)), Sum(Constant(3), Constant(4)))) must_=== None
+    }
+  }
+
+  object ExampleCodecComposition {
+    import Syntax._
+    import Example._
+    import parsing.Codec
+    import parsing.Equiv
+
+    val expressionToInt: Codec[Expression, Int] = Codec[Expression, Int](
+      Equiv.liftF(
+        e => Some((e, 1)),
+        { case (e, i) => Some(Sum(e, Constant(i))) }
+      )
+    )
+  }
+
+  "Running chain of codecs" >> {
+    import Syntax._
+    import Example._
+    import ExampleCodecComposition._
+
+    "codec composition" in {
+      import parsing.CodecChainSyntax // special import required
+      val chain: C[(Syntax.Expression, Int)] = expression.andThen(expressionToInt)
+
+      chain.parse("567") must_=== Some(("67", (Constant(5), 1)))
+      chain.print((Constant(765), 1), "") must_=== Some("7+1")
+    }
+
+    "parser composition with Monad[F]" in {
+      val res = for {
+        (r1, exp) <- expression.parse("567")
+        (r2, int) <- expressionToInt.parse(exp)
+      } yield ((r1, r2), int)
+      res must_=== Some((("67", Constant(5)), 1))
+    }
+
+    "printer composition with Monad[G]" in {
+      val res = for {
+        exp <- expressionToInt.print(1, Constant(0))
+        str <- expression.print(exp, "")
+      } yield str
+      res must_=== Some("0+1")
     }
   }
 }

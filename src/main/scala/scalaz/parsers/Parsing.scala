@@ -109,7 +109,7 @@ sealed trait Parsing[F[_], G[_]] {
   }
 
   trait EquivSyntax {
-    implicit class ToEquivOps[A, B](self: Equiv[A, B]) {
+    implicit final class ToEquivOps[A, B](self: Equiv[A, B]) {
 
       def >>> [C](that: Equiv[B, C]): Equiv[A, C] =
         Equiv(
@@ -175,6 +175,15 @@ sealed trait Parsing[F[_], G[_]] {
   case class Codec[I, A](eq: Equiv[I, (I, A)]) { self =>
     import syntax._
 
+    def parse(i: I): F[(I, A)] =
+      eq.to(i)
+
+    def print(a: A, initial: I): G[I] =
+      eq.from(initial -> a)
+
+    def print0(a: A)(implicit M: Monoid[I]): G[I] =
+      eq.from(M.mempty -> a)
+
     // ProductFunctor functionality
     def ~ [B](that: Codec[I, B]): Codec[I, (A, B)] =
       Codec(
@@ -207,7 +216,7 @@ sealed trait Parsing[F[_], G[_]] {
         )
       )
 
-    // IsoFunctor functionality
+    // IsoMonad functionality
     def ∘ [B](equiv: Equiv[A, B]): Codec[I, B] =
       Codec(
         self.eq >>> Equiv[(I, A), (I, B)](
@@ -227,5 +236,33 @@ sealed trait Parsing[F[_], G[_]] {
 
     def pure[I, A](a: A): Codec[I, A] =
       Codec(Equiv.lift[I, (I, A)]((_, a), _._1))
+  }
+
+  implicit final class CodecChainSyntax[I, A](self: Codec[I, A]) {
+    // I => (I, A) then A => (A, B) is
+    //  I => ((I, A), B)
+    // cannot be expressed with Codec (I position is defined by Equiv)
+
+    //  A => (A, B)
+    // cannot be implemented as Codec (input must be I)
+
+    //  I => (I, (A, B))
+    // possible but clashes with product in return type
+
+    def andThen[B](other: Codec[A, B]): Codec[I, (A, B)] =
+      Codec(
+        new Equiv[I, (I, (A, B))] {
+          override def to: I => F[(I, (A, B))] =
+            AB.compose[I, (I, A), (I, (A, B))](
+              AB.second[A, (A, B), I](other.eq.to),
+              self.eq.to
+            )
+          override def from: ((I, (A, B))) => G[I] =
+            BA.compose[(I, (A, B)), (I, A), I](
+              self.eq.from,
+              BA.second[(A, B), A, I](other.eq.from)
+            )
+        }
+      )
   }
 }
