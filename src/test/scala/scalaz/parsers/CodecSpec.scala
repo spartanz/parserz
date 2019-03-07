@@ -1,21 +1,21 @@
 package scalaz.parsers
 
 import org.specs2.mutable.Specification
-import scalaz.tc.Monad
 
 class CodecSpec extends Specification {
 
   "Instantiate Parsing" >> {
     "given instances of applicative and category" in {
       import implicits.monadKleisliCategory
-      import TCInstances.applicativeOption
-      Parsing[Option, Option]()
+      import implicits.monadErrorApplicativeError
+      import TCInstances.applicativeErrorOption
+      Parsing[Option, Option, Unit]()
       success
     }
 
     "given instances of monad" in {
-      val M: Monad[Option] = implicitly
-      Parsing[Option, Option](M, M)
+      val M: MonadError[Option, Unit] = TCInstances0.monadErrorOption
+      Parsing[Option, Option, Unit](M, M)
       success
     }
   }

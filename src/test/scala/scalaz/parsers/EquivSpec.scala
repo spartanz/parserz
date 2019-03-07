@@ -7,7 +7,7 @@ class EquivSpec extends Specification {
   import implicits._
   import TCInstances._
 
-  private val parsing: Parsing[Option, Option] = Parsing()
+  private val parsing: Parsing[Option, Option, Unit] = Parsing()
   private type Equiv[A, B] = parsing.Equiv[A, B]
 
   private def verify[A, B](equiv: Equiv[A, B], a: A, b: B) =

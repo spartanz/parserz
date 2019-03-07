@@ -1,8 +1,8 @@
 package scalaz.parsers
 
-trait ParserSyntax[P[_], F[_], G[_]] {
+trait ParserSyntax[P[_], F[_], G[_], E] {
 
-  val parsing: Parsing[F, G]
+  val parsing: Parsing[F, G, E]
 
   def char: P[Char]
 
@@ -22,7 +22,7 @@ trait ParserSyntax[P[_], F[_], G[_]] {
 
   def delay[A](pa: => P[A]): P[A]
 
-  implicit class ParserOps[A](p: P[A]) {
+  implicit final class ParserOps[A](p: P[A]) {
 
     def /\ [B](other: P[B])(implicit P: ProductFunctor[P]): P[A /\ B] =
       and(p, other)

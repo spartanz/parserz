@@ -1,6 +1,6 @@
 package scalaz.parsers
 
-import scalaz.tc.{ Category, CategoryClass, Monad, instanceOf }
+import scalaz.tc._
 
 object implicits {
 
@@ -13,4 +13,9 @@ object implicits {
           a => F.flatMap(g(a))(f)
       }
     )
+
+  implicit def monadErrorApplicativeError[F[_], E](
+    implicit F: MonadError[F, E]
+  ): ApplicativeError[F, E] =
+    instanceOf(F)
 }
