@@ -1,35 +1,36 @@
 package scalaz.parsers
 
-import scalaz.Scalaz.monadApplicative
 import scalaz.data.~>
 import scalaz.tc._
 
 object Parsing {
 
-  def apply[F[_]: Applicative, G[_]: Applicative]()(
-    implicit C1: Category[λ[(α, β) => α => F[β]]],
+  def apply[F[_], G[_], E]()(
+    implicit FE: ApplicativeError[F, E],
+    GE: ApplicativeError[G, E],
+    C1: Category[λ[(α, β) => α => F[β]]],
     C2: Category[λ[(α, β) => α => G[β]]]
-  ): Parsing[F, G] =
-    new Parsing[F, G] {
-      override val F: Applicative[F]                     = implicitly
-      override val G: Applicative[G]                     = implicitly
-      override val AB: Transform[λ[(α, β) => α => F[β]]] = Transform(F, C1)
-      override val BA: Transform[λ[(α, β) => α => G[β]]] = Transform(G, C2)
+  ): Parsing[F, G, E] =
+    new Parsing[F, G, E] {
+      override val F: ApplicativeError[F, E]             = FE
+      override val G: ApplicativeError[G, E]             = GE
+      override val AB: Transform[λ[(α, β) => α => F[β]]] = Transform(instanceOf(F), C1)
+      override val BA: Transform[λ[(α, β) => α => G[β]]] = Transform(instanceOf(G), C2)
     }
 
-  def apply[F[_], G[_]](F_ : Monad[F], G_ : Monad[G]): Parsing[F, G] =
-    new Parsing[F, G] {
-      override val F: Applicative[F]                     = monadApplicative[F](F_)
-      override val G: Applicative[G]                     = monadApplicative[G](G_)
-      override val AB: Transform[λ[(α, β) => α => F[β]]] = Transform(F_)
-      override val BA: Transform[λ[(α, β) => α => G[β]]] = Transform(G_)
+  def apply[F[_], G[_], E](F_ : MonadError[F, E], G_ : MonadError[G, E]): Parsing[F, G, E] =
+    new Parsing[F, G, E] {
+      override val F: ApplicativeError[F, E]             = instanceOf(F_)
+      override val G: ApplicativeError[G, E]             = instanceOf(G_)
+      override val AB: Transform[λ[(α, β) => α => F[β]]] = Transform(instanceOf(F_))
+      override val BA: Transform[λ[(α, β) => α => G[β]]] = Transform(instanceOf(G_))
     }
 }
 
-sealed trait Parsing[F[_], G[_]] {
+sealed trait Parsing[F[_], G[_], E] {
 
-  protected val F: Applicative[F]
-  protected val G: Applicative[G]
+  protected val F: ApplicativeError[F, E]
+  protected val G: ApplicativeError[G, E]
   protected val AB: Transform[λ[(α, β) => α => F[β]]]
   protected val BA: Transform[λ[(α, β) => α => G[β]]]
 
@@ -109,7 +110,7 @@ sealed trait Parsing[F[_], G[_]] {
   }
 
   trait EquivSyntax {
-    implicit class ToEquivOps[A, B](self: Equiv[A, B]) {
+    implicit final class ToEquivOps[A, B](self: Equiv[A, B]) {
 
       def >>> [C](that: Equiv[B, C]): Equiv[A, C] =
         Equiv(
@@ -175,6 +176,15 @@ sealed trait Parsing[F[_], G[_]] {
   case class Codec[I, A](eq: Equiv[I, (I, A)]) { self =>
     import syntax._
 
+    def parse(i: I): F[(I, A)] =
+      eq.to(i)
+
+    def print(a: A, initial: I): G[I] =
+      eq.from(initial -> a)
+
+    def print0(a: A)(implicit M: Monoid[I]): G[I] =
+      eq.from(M.mempty -> a)
+
     // ProductFunctor functionality
     def ~ [B](that: Codec[I, B]): Codec[I, (A, B)] =
       Codec(
@@ -207,7 +217,7 @@ sealed trait Parsing[F[_], G[_]] {
         )
       )
 
-    // IsoFunctor functionality
+    // IsoMonad functionality
     def ∘ [B](equiv: Equiv[A, B]): Codec[I, B] =
       Codec(
         self.eq >>> Equiv[(I, A), (I, B)](

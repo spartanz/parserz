@@ -87,7 +87,7 @@ object Simplest {
   }
 
   def grammar[P[_]: ProductFunctor: Alternative](
-    P: ParserSyntax[P, Option, Option]
+    P: ParserSyntax[P, Option, Option, Unit]
   ): P[Syntax.Expression] = {
     import Syntax._
     import P._
@@ -164,11 +164,12 @@ object Simplest {
     expression
   }
 
-  object Parser extends ParserSyntax[Parser, Option, Option] {
+  object Parser extends ParserSyntax[Parser, Option, Option, Unit] {
     import ScalazInstances._
+    import TCInstances._
 
-    override val parsing: Parsing[Option, Option] =
-      Parsing[Option, Option]
+    override val parsing: Parsing[Option, Option, Unit] =
+      Parsing[Option, Option, Unit]
 
     override def char: Parser[Char] = {
       case head :: tail => Right(tail -> head)
@@ -193,11 +194,12 @@ object Simplest {
       pa(_)
   }
 
-  object Printer extends ParserSyntax[Printer, Option, Option] {
+  object Printer extends ParserSyntax[Printer, Option, Option, Unit] {
     import ScalazInstances._
+    import TCInstances._
 
-    override val parsing: Parsing[Option, Option] =
-      Parsing[Option, Option]
+    override val parsing: Parsing[Option, Option, Unit] =
+      Parsing[Option, Option, Unit]
 
     override def char: Printer[Char] =
       _.toString

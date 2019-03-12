@@ -7,11 +7,13 @@ class ParserSyntaxSpec extends Specification {
 
   private type Parser[A] = String => (String, List[A])
 
-  private object Parser extends ParserSyntax[Parser, Option, Option] {
+  private object Parser extends ParserSyntax[Parser, Option, Option, Unit] {
+    import implicits._
     import Instances._
+    import TCInstances._
 
-    override val parsing: Parsing[Option, Option] =
-      Parsing[Option, Option]
+    override val parsing: Parsing[Option, Option, Unit] =
+      Parsing[Option, Option, Unit]
 
     override def char: Parser[Char] =
       s => s.headOption.fold("" -> List.empty[Char])(h => s.drop(1) -> List(h))
