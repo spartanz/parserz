@@ -5,7 +5,19 @@ import scalaz.parsers.implicits.monadKleisliCategory
 import scalaz.tc.ProfunctorClass.DeriveDimap
 import scalaz.tc._
 
+trait CategorySyntax {
+  implicit final class ToCategoryOps[=>:[_, _], B, C](self: B =>: C) {
+    def ∘ [A](f: A =>: B)(implicit ev: CategoryClass[=>:]): A =>: C = ev.compose(self, f)
+  }
+}
+
+object syntax extends CategorySyntax
+
 trait TransformClass[=>:[_, _]] extends StrongClass[=>:] with CategoryClass[=>:] {
+
+  implicit val cc: CategoryClass[=>:] = this
+
+  import syntax._
 
   def duplicate[A]: A =>: (A /\ A)
 
@@ -16,6 +28,11 @@ trait TransformClass[=>:[_, _]] extends StrongClass[=>:] with CategoryClass[=>:]
   def dropSecond[A, B]: (A /\ B) =>: A
 
   def combine[A, B, C](ab: A =>: B, ac: A =>: C): A =>: (B /\ C)
+
+  def cross[A, B, C, D](ab: A =>: B, cd: C =>: D): (A /\ C) =>: (C /\ B, A /\ D) =
+    combine(swap ∘ first[A, B, C](ab), second(cd))
+
+  def curl[A, B, X]: (X /\ (A /\ B)) =>: (B /\ A)
 
   // todo: extend ChoiceClass[=>:] when scalaz.Disjunction is used
   def leftchoice[A, B, C](pab: A =>: B): (A \/ C) =>: (B \/ C)
@@ -44,6 +61,7 @@ object Transform {
       override def first[A, B, C](pab: A => F[B]): A /\ C => F[B /\ C] = {
         case (a, c) => F.map(pab(a))((_, c))
       }
+
       override def second[A, B, C](pab: A => F[B]): C /\ A => F[C /\ B] = {
         case (c, a) => F.map(pab(a))((c, _))
       }
@@ -67,6 +85,10 @@ object Transform {
 
       override def combine[A, B, C](ab: A => F[B], ac: A => F[C]): A => F[B /\ C] =
         a => F.ap(ab(a))(F.map(ac(a))(c => b => (b, c)))
+
+      override def curl[A, B, X]: X /\ (A /\ B) => F[B /\ A] = {
+        case (_, (a, b)) => F.pure((b, a))
+      }
 
       override def conjunction[A, B, C, D](ab: A => F[B], cd: C => F[D]): A /\ C => F[B /\ D] = {
         case (a, c) => F.ap(ab(a))(F.map(cd(c))(d => b => (b, d)))
@@ -98,30 +120,28 @@ object Transform {
 
   trait DeriveTransformFunctions[=>:[_, _]] extends TransformClass[=>:] {
 
+    implicit val self: CategoryClass[=>:] = this
+
+    import syntax._
+
     override def combine[A, B, C](ab: A =>: B, ac: A =>: C): A =>: (B /\ C) =
-      compose(compose(first[A, B, C](ab), second[A, C, A](ac)), duplicate[A])
+      first[A, B, C](ab) ∘ second[A, C, A](ac) ∘ duplicate[A]
 
     override def dropSecond[A, B]: (A /\ B) =>: A =
       compose[A /\ B, B /\ A, A](dropFirst, swap)
 
     override def swap2[A, B, C]: (A /\ (B /\ C)) =>: (B /\ (A /\ C)) = {
       val a = dropSecond[A, B /\ C]
-      val b = compose(dropSecond[B, C], dropFirst[A, B /\ C])
-      val c = compose(dropFirst[B, C], dropFirst[A, B /\ C])
+      val b = dropSecond[B, C] ∘ dropFirst[A, B /\ C]
+      val c = dropFirst[B, C] ∘ dropFirst[A, B /\ C]
       combine(b, combine(a, c))
     }
 
-    override def conjunction[A, B, C, D](ab: A =>: B, cd: C =>: D): (A /\ C) =>: (B /\ D) = {
-      val x1: (A /\ C) =>: (C /\ B)                     = compose(swap, first[A, B, C](ab))
-      val x2: (A /\ C) =>: (A /\ D)                     = second[C, D, A](cd)
-      val x3: (A /\ C) =>: (C /\ B, A /\ D)             = combine(x1, x2)
-      val x4: (C /\ B, A /\ D) =>: (A /\ (C /\ B /\ D)) = swap2[(C, B), A, D]
-      val x5: (A /\ (C /\ B /\ D)) =>: (D /\ (C /\ B)) =
-        compose(swap[C /\ B, D], dropFirst[A, C /\ B /\ D])
-      val x6: (D /\ (C /\ B)) =>: (C /\ (D /\ B)) = swap2[D, C, B]
-      val x7: (C /\ (D /\ B)) =>: (B /\ D)        = compose(swap[D, B], dropFirst[C, (D, B)])
-      val x8: (A /\ C) =>: (B /\ D)               = compose(compose(compose(compose(x7, x6), x5), x4), x3)
-      x8
-    }
+    override def curl[A, B, X]: (X /\ (A /\ B)) =>: (B /\ A) = swap ∘ dropFirst
+
+    override def conjunction[A, B, C, D](ab: A =>: B, cd: C =>: D): (A /\ C) =>: (B /\ D) =
+      curl[D, B, C] ∘ swap2[D, C, B] ∘ curl[C /\ B, D, A] ∘
+        swap2[(C, B), A, D] ∘ cross(ab, cd)
+
   }
 }
