@@ -15,7 +15,7 @@ object syntax extends CategorySyntax
 
 trait TransformClass[=>:[_, _]] extends StrongClass[=>:] with CategoryClass[=>:] {
 
-  implicit val cc: CategoryClass[=>:] = this
+  implicit private val cc: CategoryClass[=>:] = this
 
   import syntax._
 
@@ -120,7 +120,7 @@ object Transform {
 
   trait DeriveTransformFunctions[=>:[_, _]] extends TransformClass[=>:] {
 
-    implicit val self: CategoryClass[=>:] = this
+    implicit private val cc: CategoryClass[=>:] = this
 
     import syntax._
 
