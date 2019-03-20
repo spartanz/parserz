@@ -18,7 +18,7 @@ class ParserSyntaxSpec extends Specification {
     override def char: Parser[Char] =
       s => s.headOption.fold("" -> List.empty[Char])(h => s.drop(1) -> List(h))
 
-    override def lift[A](a: A): Parser[A] =
+    override def pure[A](a: A): Parser[A] =
       _ -> List(a)
 
     override def left[A, B](pa: Parser[A]): Parser[A \/ B] =
@@ -84,9 +84,9 @@ class ParserSyntaxSpec extends Specification {
     }
   }
 
-  "lift" should {
+  "pure" should {
     "construct a parser that yields given value" in {
-      lift(1).apply("a") must_=== (("a", List(1)))
+      pure(1).apply("a") must_=== (("a", List(1)))
     }
   }
 

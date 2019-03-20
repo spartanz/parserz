@@ -14,52 +14,22 @@ class SimplestCodecSpec extends Specification {
     import implicits._
     import TCInstances._
     import Syntax._
-    import EquivInstances._
 
     val parsing: Parsing[Option, Option, Unit] = Parsing()
 
-    import parsing.syntax._
     import parsing.Codec
     import parsing.Equiv
-    import parsing.Equiv.Product._
-
-    object EquivInstances {
-
-      def subset[A](p: A => Boolean): Equiv[A, A] =
-        Equiv.liftF(Some(_).filter(p), Some(_).filter(p))
-
-      def optional[A, B](ab: PartialFunction[A, B], ba: PartialFunction[B, A]): Equiv[A, B] =
-        Equiv.liftF(ab.lift, ba.lift)
-
-      def nil[A]: Equiv[Unit, List[A]] = optional(
-        { case ()  => Nil },
-        { case Nil => () }
-      )
-
-      def nel[A]: Equiv[(A, List[A]), List[A]] = optional(
-        { case (x, xs) => x :: xs },
-        { case x :: xs => (x, xs) }
-      )
-
-      def foldL[A, B](equiv: Equiv[A ⓧ B, A]): Equiv[A ⓧ List[B], A] = {
-        def step: Equiv[A ⓧ List[B], A ⓧ List[B]] = {
-          val first: Equiv[A ⓧ List[B], A ⓧ (B ⓧ List[B])] = nel[B].reverse.second
-          val app: Equiv[A ⓧ B ⓧ List[B], A ⓧ List[B]]     = equiv.first
-          first >>> associate >>> app
-        }
-        Equiv.iterate(step) >>> nil[B].second[A].reverse >>> unitR[A].reverse
-      }
-    }
+    import parsing.Equiv._
 
     val constantEq: Equiv[Int, Constant] =
-      Equiv.lift(Constant, _.value)
+      lift(Constant, _.value)
 
-    val constantExpressionEq: Equiv[Constant, Expression] = optional(
+    val constantExpressionEq: Equiv[Constant, Expression] = liftPartial(())(
       { case a               => a },
       { case n @ Constant(_) => n }
     )
 
-    val sumExpressionEq: Equiv[Expression /\ (Char /\ Expression), Expression] = optional(
+    val sumExpressionEq: Equiv[Expression /\ (Char /\ Expression), Expression] = liftPartial(())(
       { case (e1, (_, e2)) => Sum(e1, e2) },
       { case Sum(e1, e2)   => e1 -> ('+' -> e2) }
     )
@@ -67,23 +37,23 @@ class SimplestCodecSpec extends Specification {
     type C[A] = Codec[String, A]
 
     val char: C[Char] = Codec(
-      Equiv.liftF(
+      liftF(
         s => s.headOption.map(s.drop(1) -> _),
         { case (s, c) => Some(s + c) }
       )
     )
 
-    val digit: C[Char] = char ∘ subset(_.isDigit)
+    val digit: C[Char] = char ∘ ensure(())(_.isDigit)
 
-    val plus: C[Char] = char ∘ subset(_ == '+')
+    val plus: C[Char] = char ∘ ensure(())(_ == '+')
 
-    val integer: C[Int] = digit ∘ Equiv.lift(_.toString.toInt, _.toString.head)
+    val integer: C[Int] = digit ∘ lift(_.toString.toInt, _.toString.head)
 
     val constant: C[Constant] = integer ∘ constantEq
 
     val case0: C[Expression] = constant ∘ constantExpressionEq
 
-    val case1: C[Expression] = (case0 ~ (plus ~ case0).many) ∘ foldL(sumExpressionEq)
+    val case1: C[Expression] = (case0 ~ (plus ~ case0).many) ∘ foldl(())(sumExpressionEq)
 
     lazy val expression: C[Expression] = case1
   }
