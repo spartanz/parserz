@@ -91,60 +91,29 @@ object Simplest {
   ): P[Syntax.Expression] = {
     import Syntax._
     import P._
-    import EquivInstances._
+    import parsing.Equiv._
     import ScalazInstances._
 
     type Equiv[A, B] = parsing.Equiv[A, B]
 
-    object EquivInstances {
-      import parsing.syntax._
-      import parsing.Equiv._
-      import parsing.Equiv.Product._
-
-      def subset[A](p: A => Boolean): Equiv[A, A] =
-        liftF(Some(_).filter(p), Some(_).filter(p))
-
-      def unsafe[A, B](ab: PartialFunction[A, B], ba: PartialFunction[B, A]): Equiv[A, B] =
-        liftF(ab.lift, ba.lift)
-
-      def nil[A]: Equiv[Unit, List[A]] = unsafe(
-        { case ()  => Nil },
-        { case Nil => () }
-      )
-
-      def nel[A]: Equiv[(A, List[A]), List[A]] = unsafe(
-        { case (x, xs) => x :: xs },
-        { case x :: xs => (x, xs) }
-      )
-
-      def foldL[A, B](equiv: Equiv[A ⓧ B, A]): Equiv[A ⓧ List[B], A] = {
-        def step: Equiv[A ⓧ List[B], A ⓧ List[B]] = {
-          val first: Equiv[A ⓧ List[B], A ⓧ (B ⓧ List[B])] = id[A] ⓧ ~nel[B]
-          val app: Equiv[A ⓧ B ⓧ List[B], A ⓧ List[B]]     = equiv ⓧ id[List[B]]
-          first >>> associate >>> app
-        }
-        iterate(step) >>> (id[A] ⓧ ~nil[B]) >>> ~unitR[A]
-      }
-    }
-
     val digit: P[Char] =
-      char ∘ subset(_.isDigit)
+      char ∘ ensure(())(_.isDigit)
 
     val plus: P[Char] =
-      char ∘ subset(_ == '+')
+      char ∘ ensure(())(_ == '+')
 
     val integer: P[Int] =
-      digit ∘ parsing.Equiv.lift(_.toString.toInt, _.toString.head)
+      digit ∘ lift(_.toString.toInt, _.toString.head)
 
     val constantEq: Equiv[Int, Constant] =
-      parsing.Equiv.lift(Constant, _.value)
+      lift(Constant, _.value)
 
-    val constantExpressionEq: Equiv[Constant, Expression] = unsafe(
+    val constantExpressionEq: Equiv[Constant, Expression] = liftPartial(())(
       { case a               => a },
       { case n @ Constant(_) => n }
     )
 
-    val sumExpressionEq: Equiv[Expression /\ (Char /\ Expression), Expression] = unsafe(
+    val sumExpressionEq: Equiv[Expression /\ (Char /\ Expression), Expression] = liftPartial(())(
       { case (e1, (_, e2)) => Sum(e1, e2) },
       { case Sum(e1, e2)   => e1 -> ('+' -> e2) }
     )
@@ -156,7 +125,7 @@ object Simplest {
       constant ∘ constantExpressionEq
 
     val case1: P[Expression] =
-      (case0 /\ (plus /\ case0).many) ∘ foldL(sumExpressionEq)
+      (case0 /\ (plus /\ case0).many) ∘ foldl(())(sumExpressionEq)
 
     lazy val expression: P[Expression] =
       case1
@@ -176,7 +145,7 @@ object Simplest {
       case Nil          => Left(())
     }
 
-    override def lift[A](a: A): Parser[A] =
+    override def pure[A](a: A): Parser[A] =
       chars => Right(chars -> a)
 
     override def left[A, B](pa: Parser[A]): Parser[A \/ B] =
@@ -204,7 +173,7 @@ object Simplest {
     override def char: Printer[Char] =
       _.toString
 
-    override def lift[A](a: A): Printer[A] =
+    override def pure[A](a: A): Printer[A] =
       _ => ""
 
     override def left[A, B](pa: Printer[A]): Printer[A \/ B] = {

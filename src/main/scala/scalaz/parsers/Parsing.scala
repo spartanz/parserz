@@ -65,6 +65,38 @@ sealed trait Parsing[F[_], G[_], E] {
     def create[A](a: A): Equiv[Unit, A] =
       lift(_ => a, _ => ())
 
+    def ensure[A](e: E)(p: A => Boolean): Equiv[A, A] =
+      liftF(
+        a => if (p(a)) F.pure(a) else F.raiseError(e),
+        b => if (p(b)) G.pure(b) else G.raiseError(e)
+      )
+
+    def liftPartial[A, B](e: E)(ab: PartialFunction[A, B], ba: PartialFunction[B, A]): Equiv[A, B] =
+      liftF(
+        a => ab.lift(a).fold[F[B]](F.raiseError(e))(F.pure),
+        b => ba.lift(b).fold[G[A]](G.raiseError(e))(G.pure)
+      )
+
+    def liftPartialF[A, B](
+      e: E
+    )(ab: PartialFunction[A, F[B]], ba: PartialFunction[B, G[A]]): Equiv[A, B] =
+      liftF(
+        a => ab.lift(a).getOrElse(F.raiseError(e)),
+        b => ba.lift(b).getOrElse(G.raiseError(e))
+      )
+
+    def nil[A](e: E): Equiv[Unit, List[A]] =
+      liftPartial(e)(
+        { case ()  => Nil },
+        { case Nil => () }
+      )
+
+    def nel[A](e: E): Equiv[(A, List[A]), List[A]] =
+      liftPartial(e)(
+        { case (x, xs) => x :: xs },
+        { case x :: xs => (x, xs) }
+      )
+
     def list[A]: Equiv[A /\ List[A] \/ Unit, List[A]] = lift(
       {
         case Right(_)      => Nil
@@ -80,6 +112,21 @@ sealed trait Parsing[F[_], G[_], E] {
         L.foldLeft(f(state), state) { case (_, s) => step(f, s) }
 
       lift(step(equiv.to, _), step(equiv.from, _))
+    }
+
+    def foldl[A, B](e: E)(equiv: Equiv[A /\ B, A])(
+      implicit F0: Foldable[F],
+      G0: Foldable[G],
+      FG: F ~> G,
+      GF: G ~> F
+    ): Equiv[A /\ List[B], A] = {
+      import Product._
+      def step: Equiv[A ⓧ List[B], A ⓧ List[B]] = {
+        val first: Equiv[A ⓧ List[B], A ⓧ (B ⓧ List[B])] = nel[B](e).reverse.second
+        val app: Equiv[A ⓧ B ⓧ List[B], A ⓧ List[B]]     = equiv.first
+        first >>> associate >>> app
+      }
+      iterate(step) >>> nil[B](e).second[A].reverse >>> unitR[A].reverse
     }
 
     object Product {

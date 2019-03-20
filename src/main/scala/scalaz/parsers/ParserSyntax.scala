@@ -6,7 +6,7 @@ trait ParserSyntax[P[_], F[_], G[_], E] {
 
   def char: P[Char]
 
-  def lift[A](a: A): P[A]
+  def pure[A](a: A): P[A]
 
   def left[A, B](pa: P[A]): P[A \/ B]
 
@@ -37,7 +37,7 @@ trait ParserSyntax[P[_], F[_], G[_], E] {
       imap(p)(instance)
 
     def many(implicit P: ProductFunctor[P], A: Alternative[P]): P[List[A]] = {
-      lazy val step: P[List[A]] = ((p /\ delay(step)) \/ lift(())) ∘ parsing.Equiv.list
+      lazy val step: P[List[A]] = ((p /\ delay(step)) \/ pure(())) ∘ parsing.Equiv.list
       step
     }
   }
