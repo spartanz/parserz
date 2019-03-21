@@ -91,7 +91,8 @@ sealed trait Parsing[F[_], G[_], E] {
         { case Nil => () }
       )
 
-    def nel[A](e: E): Equiv[(A, List[A]), List[A]] =
+    // todo: return Equiv[(A, List[A]), NonEmptyList[A]]
+    def nel[A](e: E): Equiv[A /\ List[A], List[A]] =
       liftPartial(e)(
         { case (x, xs) => x :: xs },
         { case x :: xs => (x, xs) }
@@ -278,6 +279,10 @@ sealed trait Parsing[F[_], G[_], E] {
         ((self ~ Codec(Equiv(step.eq.to(_), step.eq.from(_)))) | Codec.pure(())) ∘ Equiv.list
       step
     }
+
+    // todo: return Codec[I, NonEmptyList[A]]
+    def many1(e: E)(implicit AF: Alternative[F]): Codec[I, List[A]] =
+      (self ~ many) ∘ Equiv.nel(e)
   }
 
   object Codec {
