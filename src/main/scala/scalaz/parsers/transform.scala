@@ -11,13 +11,13 @@ trait CategorySyntax {
   }
 }
 
-object syntax extends CategorySyntax
+object catSyntax extends CategorySyntax
 
 trait TransformClass[=>:[_, _]] extends StrongClass[=>:] with CategoryClass[=>:] {
 
   implicit private val cc: CategoryClass[=>:] = this
 
-  import syntax._
+  import catSyntax._
 
   def duplicate[A]: A =>: (A /\ A)
 
@@ -122,7 +122,7 @@ object Transform {
 
     implicit private val cc: CategoryClass[=>:] = this
 
-    import syntax._
+    import catSyntax._
 
     override def combine[A, B, C](ab: A =>: B, ac: A =>: C): A =>: (B /\ C) =
       first[A, B, C](ab) ∘ second[A, C, A](ac) ∘ duplicate[A]

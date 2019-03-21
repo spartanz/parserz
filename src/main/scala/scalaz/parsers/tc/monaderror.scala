@@ -1,5 +1,6 @@
-package scalaz.parsers
+package scalaz.parsers.tc
 
+import scalaz.parsers.MonadError
 import scalaz.tc.BindClass.DeriveFlatMap
 import scalaz.tc._
 

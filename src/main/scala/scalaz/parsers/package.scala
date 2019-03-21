@@ -1,5 +1,11 @@
 package scalaz
 
+import scalaz.parsers.tc.{
+  AlternativeClass,
+  ApplicativeErrorClass,
+  MonadErrorClass,
+  ProductFunctorClass
+}
 import scalaz.tc.InstanceOf
 
 package object parsers {

@@ -1,5 +1,6 @@
-package scalaz.parsers
+package scalaz.parsers.tc
 
+import scalaz.parsers.Alternative
 import scalaz.tc.instanceOf
 
 trait AlternativeClass[F[_]] {
