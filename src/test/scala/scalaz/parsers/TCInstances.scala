@@ -27,6 +27,19 @@ object TCInstances {
 
   implicit val OptionToOption: Option ~> Option =
     ∀.mk[Option ~> Option].from(identity)
+
+  implicit def foldableEither[R]: Foldable[Either[R, ?]] = instanceOf(
+    new FoldableClass[Either[R, ?]] with DeriveFoldMap[Either[R, ?]]
+    with DeriveToList[Either[R, ?]] {
+      override def foldRight[A, B](fa: Either[R, A], z: => B)(f: (A, => B) => B): B =
+        fa.fold(_ => z, f(_, z))
+      override def foldLeft[A, B](fa: Either[R, A], z: B)(f: (B, A) => B): B =
+        fa.fold(_ => z, f(z, _))
+    }
+  )
+
+  implicit def EitherToEither[R]: Either[R, ?] ~> Either[R, ?] =
+    ∀.mk[Either[R, ?] ~> Either[R, ?]].from(identity)
 }
 
 object TCInstances0 {
