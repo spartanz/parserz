@@ -1,6 +1,8 @@
 package scalaz.parsers
 
 import org.specs2.mutable.Specification
+import scalaz.parsers.syntax.ParserSyntax
+import scalaz.parsers.tc.{ AlternativeClass, ProductFunctorClass }
 import scalaz.tc._
 
 class ParserSyntaxSpec extends Specification {

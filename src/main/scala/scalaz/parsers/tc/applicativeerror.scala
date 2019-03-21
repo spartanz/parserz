@@ -1,4 +1,4 @@
-package scalaz.parsers
+package scalaz.parsers.tc
 
 import scalaz.tc._
 

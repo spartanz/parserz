@@ -1,4 +1,6 @@
-package scalaz.parsers
+package scalaz.parsers.syntax
+
+import scalaz.parsers._
 
 trait ParserSyntax[P[_], F[_], G[_], E] {
 

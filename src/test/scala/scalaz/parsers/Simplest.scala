@@ -1,6 +1,8 @@
 package scalaz.parsers
 
 import scalaz.data.{ ~>, ∀ }
+import scalaz.parsers.syntax.ParserSyntax
+import scalaz.parsers.tc.{ AlternativeClass, ProductFunctorClass }
 import scalaz.tc.FoldableClass.{ DeriveFoldMap, DeriveToList }
 import scalaz.tc._
 

@@ -2,6 +2,7 @@ package scalaz.parsers
 
 import scalaz.data.{ ~>, ∀ }
 import scalaz.parsers.implicits.monadErrorApplicativeError
+import scalaz.parsers.tc.MonadErrorClass
 import scalaz.tc.BindClass.DeriveFlatMap
 import scalaz.tc.FoldableClass.{ DeriveFoldMap, DeriveToList }
 import scalaz.tc._
