@@ -1,9 +1,10 @@
 package scalaz.parsers
 
 import org.specs2.mutable.Specification
+import scalaz.Zip
 import scalaz.parsers.syntax.ParserSyntax
+import scalaz.parsers.tc.Alternative
 import scalaz.parsers.tc.Category._
-import scalaz.parsers.tc.{ Alternative, ProductFunctor }
 import scalaz.std.option._
 
 class ParserSyntaxSpec extends Specification {
@@ -37,16 +38,16 @@ class ParserSyntaxSpec extends Specification {
 
   private object Instances {
 
-    implicit val productFunctorParser: ProductFunctor[Parser] =
-      new ProductFunctor[Parser] {
-        override def and[A, B](fa: Parser[A], fb: Parser[B]): Parser[A /\ B] = s => {
+    implicit val parserZip: Zip[Parser] =
+      new Zip[Parser] {
+        override def zip[A, B](fa: => Parser[A], fb: => Parser[B]): Parser[A /\ B] = s => {
           val (s1, as) = fa(s)
           val (s2, bs) = if (as.nonEmpty) fb(s1) else s1 -> Nil
           s2 -> as.zip(bs)
         }
       }
 
-    implicit val alternativeParser: Alternative[Parser] =
+    implicit val parserAlternative: Alternative[Parser] =
       new Alternative[Parser] {
         override def or[A](f1: Parser[A], f2: => Parser[A]): Parser[A] = { s =>
           val (s1, r1) = f1(s)

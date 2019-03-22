@@ -233,7 +233,7 @@ sealed trait Parsing[F[_], G[_], E] {
     def print0(a: A)(implicit M: Monoid[I]): G[I] =
       eq.from(M.zero -> a)
 
-    // ProductFunctor functionality
+    // Zip functionality
     def ~ [B](that: Codec[I, B]): Codec[I, (A, B)] =
       Codec(
         Equiv[I, (I, (A, B))](
