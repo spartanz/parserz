@@ -1,6 +1,9 @@
 package scalaz.parsers
 
 import org.specs2.mutable.Specification
+import scalaz.parsers.tc.Category
+import scalaz.std.either._
+import scalaz.std.string._
 
 class ClassicExampleSpec extends Specification {
 
@@ -15,9 +18,9 @@ class ClassicExampleSpec extends Specification {
   }
 
   object Example {
-    import implicits._
     import TCInstances._
     import Syntax._
+    import Category._
 
     val parsing: Parsing[Either[String, ?], Either[String, ?], String] = Parsing()
 

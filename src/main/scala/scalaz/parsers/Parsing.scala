@@ -1,7 +1,7 @@
 package scalaz.parsers
 
-import scalaz.data.~>
-import scalaz.tc._
+import scalaz.parsers.tc.{ Alternative, Category }
+import scalaz.{ ApplicativeError, Foldable, MonadError, Monoid, ~> }
 
 object Parsing {
 
@@ -14,16 +14,16 @@ object Parsing {
     new Parsing[F, G, E] {
       override val F: ApplicativeError[F, E]             = FE
       override val G: ApplicativeError[G, E]             = GE
-      override val AB: Transform[λ[(α, β) => α => F[β]]] = Transform(instanceOf(F), C1)
-      override val BA: Transform[λ[(α, β) => α => G[β]]] = Transform(instanceOf(G), C2)
+      override val AB: Transform[λ[(α, β) => α => F[β]]] = Transform(F, C1)
+      override val BA: Transform[λ[(α, β) => α => G[β]]] = Transform(G, C2)
     }
 
   def apply[F[_], G[_], E](F_ : MonadError[F, E], G_ : MonadError[G, E]): Parsing[F, G, E] =
     new Parsing[F, G, E] {
-      override val F: ApplicativeError[F, E]             = instanceOf(F_)
-      override val G: ApplicativeError[G, E]             = instanceOf(G_)
-      override val AB: Transform[λ[(α, β) => α => F[β]]] = Transform(instanceOf(F_))
-      override val BA: Transform[λ[(α, β) => α => G[β]]] = Transform(instanceOf(G_))
+      override val F: ApplicativeError[F, E]             = F_
+      override val G: ApplicativeError[G, E]             = G_
+      override val AB: Transform[λ[(α, β) => α => F[β]]] = Transform(F_)
+      override val BA: Transform[λ[(α, β) => α => G[β]]] = Transform(G_)
     }
 }
 
@@ -73,8 +73,8 @@ sealed trait Parsing[F[_], G[_], E] {
 
     def liftPartial[A, B](e: E)(ab: PartialFunction[A, B], ba: PartialFunction[B, A]): Equiv[A, B] =
       liftF(
-        a => ab.lift(a).fold[F[B]](F.raiseError(e))(F.pure),
-        b => ba.lift(b).fold[G[A]](G.raiseError(e))(G.pure)
+        a => ab.lift(a).fold[F[B]](F.raiseError(e))(F.pure(_)),
+        b => ba.lift(b).fold[G[A]](G.raiseError(e))(G.pure(_))
       )
 
     def liftPartialF[A, B](
@@ -179,8 +179,8 @@ sealed trait Parsing[F[_], G[_], E] {
 
       def imap[C](bc: B => C, cb: C => B): Equiv[A, C] =
         Equiv(
-          AB.rmap(self.to)(bc),
-          BA.lmap(self.from)(cb)
+          AB.mapsnd(self.to)(bc),
+          BA.mapfst(self.from)(cb)
         )
 
       def first[C]: Equiv[(A, C), (B, C)] =
@@ -231,7 +231,7 @@ sealed trait Parsing[F[_], G[_], E] {
       eq.from(initial -> a)
 
     def print0(a: A)(implicit M: Monoid[I]): G[I] =
-      eq.from(M.mempty -> a)
+      eq.from(M.zero -> a)
 
     // ProductFunctor functionality
     def ~ [B](that: Codec[I, B]): Codec[I, (A, B)] =

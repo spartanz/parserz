@@ -1,65 +1,52 @@
 package scalaz.parsers
 
 import org.specs2.mutable.Specification
-import scalaz.Scalaz.monadApplicative
-import scalaz.data.Disjunction
+import scalaz.{ ProChoice, Strong, idInstance }
 import scalaz.parsers.Transform._
-import scalaz.tc.BindClass.DeriveFlatten
-import scalaz.tc.ProfunctorClass.DeriveDimap
-import scalaz.tc._
+import scalaz.parsers.tc.Category
+import scalaz.std.function._
+import scalaz.Scalaz.Id
 
 class TransformSpec extends Specification {
 
   private object Defs {
     type F[A, B] = A => Id[B]
-    type Id[A]   = A
 
-    val strong: Strong[F]     = StrongClass.functionStrong
-    val choice: Choice[F]     = ChoiceClass.functionChoice
-    val category: Category[F] = CategoryClass.function1Category
-
-    val monadId: Monad[Id] = instanceOf(
-      new MonadClass[Id] with DeriveFlatten[Id] {
-        override def pure[A](a: A): Id[A]                           = a
-        override def map[A, B](fa: Id[A])(f: A => B): Id[B]         = f(fa)
-        override def ap[A, B](fa: Id[A])(f: Id[A => B]): Id[B]      = f(fa)
-        override def flatMap[A, B](fa: Id[A])(f: A => Id[B]): Id[B] = f(fa)
-      }
-    )
-    val applicativeId: Applicative[Id] = monadApplicative(monadId)
+    val strong: Strong[F]     = implicitly
+    val choice: ProChoice[F]  = implicitly
+    val category: Category[F] = Category.kleisliCategory(idInstance)
   }
 
   import Defs._
 
-  private val transformMonad: Transform[F] = Transform(monadId)
+  private val transformMonad: Transform[F] = Transform(idInstance)
 
-  private val transformCategory: Transform[F] = Transform(applicativeId, category)
+  private val transformCategory: Transform[F] = Transform(idInstance, category)
 
-  private val transformOverridden: Transform[F] = instanceOf(
-    new TransformClass[F] with DeriveDimap[F] with DeriveTransformFunctions[F] {
-      override def duplicate[A]: F[A, (A, A)]                        = a => (a, a)
-      override def swap[A, B]: F[(A, B), (B, A)]                     = { case (a, b) => (b, a) }
-      override def dropFirst[A, B]: F[(A, B), B]                     = { case (_, b) => b }
-      override def id[A]: F[A, A]                                    = category.id
-      override def compose[A, B, C](f: F[B, C], g: F[A, B]): F[A, C] = category.compose(f, g)
-      override def lmap[A, B, C](fab: F[A, B])(ca: C => A): F[C, B]  = strong.lmap(fab)(ca)
-      override def rmap[A, B, C](fab: F[A, B])(bc: B => C): F[A, C]  = strong.rmap(fab)(bc)
-      override def first[A, B, C](pab: F[A, B]): F[(A, C), (B, C)]   = strong.first(pab)
-      override def second[A, B, C](pab: F[A, B]): F[(C, A), (C, B)]  = strong.second(pab)
+  private val transformOverridden: Transform[F] =
+    new Transform[F] with DeriveTransformFunctions[F] {
+      override def duplicate[A]: F[A, (A, A)]                         = a => (a, a)
+      override def swap[A, B]: F[(A, B), (B, A)]                      = { case (a, b) => (b, a) }
+      override def dropFirst[A, B]: F[(A, B), B]                      = { case (_, b) => b }
+      override def id[A]: F[A, A]                                     = category.id
+      override def compose[A, B, C](f: F[B, C], g: F[A, B]): F[A, C]  = category.compose(f, g)
+      override def mapfst[A, B, C](fab: F[A, B])(ca: C => A): F[C, B] = strong.mapfst(fab)(ca)
+      override def mapsnd[A, B, C](fab: F[A, B])(bc: B => C): F[A, C] = strong.mapsnd(fab)(bc)
+      override def first[A, B, C](pab: F[A, B]): F[(A, C), (B, C)]    = strong.first(pab)
+      override def second[A, B, C](pab: F[A, B]): F[(C, A), (C, B)]   = strong.second(pab)
       override def leftchoice[A, B, C](pab: F[A, B]): F[A \/ C, B \/ C] =
-        dimap[Disjunction[A, C], Disjunction[B, C], A \/ C, B \/ C](choice.leftchoice(pab))(
-          Disjunction.fromEither
+        dimap[scalaz.\/[A, C], scalaz.\/[B, C], A \/ C, B \/ C](choice.left(pab))(
+          scalaz.\/.fromEither
         )(_.fold(Left(_), Right(_)))
       override def rightchoice[A, B, C](pab: F[A, B]): F[C \/ A, C \/ B] =
-        dimap[Disjunction[C, A], Disjunction[C, B], C \/ A, C \/ B](choice.rightchoice(pab))(
-          Disjunction.fromEither
+        dimap[scalaz.\/[C, A], scalaz.\/[C, B], C \/ A, C \/ B](choice.right(pab))(
+          scalaz.\/.fromEither
         )(_.fold(Left(_), Right(_)))
       override def disjunction[A, B, C, D](ab: F[A, B], cd: F[C, D]): F[A \/ C, B \/ D] = {
         case Left(a)  => Left(ab(a))
         case Right(c) => Right(cd(c))
       }
     }
-  )
 
   private def test(from: String, name: String, t: Transform[F]) =
     s"$from Transform $name" >> {
@@ -102,10 +89,10 @@ class TransformSpec extends Specification {
       }
       // Profunctor
       "lmap" in {
-        t.lmap[Int, String, Long](_.toString)(_.toInt)(1L) must_== "1"
+        t.mapfst[Int, String, Long](_.toString)(_.toInt)(1L) must_== "1"
       }
       "rmap" in {
-        t.rmap[Int, String, Long](_.toString)(_.toLong)(1) must_== 1L
+        t.mapsnd[Int, String, Long](_.toString)(_.toLong)(1) must_== 1L
       }
       // Strong
       "first" in {

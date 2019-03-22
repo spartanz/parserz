@@ -2,16 +2,15 @@ package scalaz.parsers
 
 import org.specs2.mutable.Specification
 import scalaz.parsers.syntax.ParserSyntax
-import scalaz.parsers.tc.{ AlternativeClass, ProductFunctorClass }
-import scalaz.tc._
+import scalaz.parsers.tc.Category._
+import scalaz.parsers.tc.{ Alternative, ProductFunctor }
+import scalaz.std.option._
 
 class ParserSyntaxSpec extends Specification {
 
   private type Parser[A] = String => (String, List[A])
 
   private object Parser extends ParserSyntax[Parser, Option, Option, Unit] {
-    import implicits._
-    import Instances._
     import TCInstances._
 
     override val parsing: Parsing[Option, Option, Unit] =
@@ -37,20 +36,18 @@ class ParserSyntaxSpec extends Specification {
   }
 
   private object Instances {
-    import scalaz.Scalaz.monadApplicative
 
-    implicit val productFunctorParser: ProductFunctor[Parser] = instanceOf(
-      new ProductFunctorClass[Parser] {
+    implicit val productFunctorParser: ProductFunctor[Parser] =
+      new ProductFunctor[Parser] {
         override def and[A, B](fa: Parser[A], fb: Parser[B]): Parser[A /\ B] = s => {
           val (s1, as) = fa(s)
           val (s2, bs) = if (as.nonEmpty) fb(s1) else s1 -> Nil
           s2 -> as.zip(bs)
         }
       }
-    )
 
-    implicit val alternativeParser: Alternative[Parser] = instanceOf(
-      new AlternativeClass[Parser] {
+    implicit val alternativeParser: Alternative[Parser] =
+      new Alternative[Parser] {
         override def or[A](f1: Parser[A], f2: => Parser[A]): Parser[A] = { s =>
           val (s1, r1) = f1(s)
           val (s2, r2) = f2(s)
@@ -58,19 +55,6 @@ class ParserSyntaxSpec extends Specification {
           if (diff < 0) s1 -> r1 else if (diff > 0) s2 -> r2 else s1 -> (r1 ::: r2)
         }
       }
-    )
-
-    implicit val applicativeOption: Applicative[Option] =
-      monadApplicative[Option](implicitly)
-
-    type =>:[A, B] = A => Option[B]
-
-    implicit val CategoryOfPartialFunctions: Category[=>:] = instanceOf(
-      new CategoryClass[=>:] {
-        override def id[A]: =>:[A, A]                                        = Option.apply
-        override def compose[A, B, C](f: =>:[B, C], g: =>:[A, B]): =>:[A, C] = g(_).flatMap(f)
-      }
-    )
   }
 
   import Instances._
