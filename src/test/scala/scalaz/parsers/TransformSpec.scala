@@ -72,13 +72,17 @@ class TransformSpec extends Specification {
       "dropSecond" in {
         t.dropSecond((1, "a")) must_== 1
       }
+      "cross" in {
+        t.cross[Int, String, Int, Long](_.toString, _.toLong)((1, 2)) must_== (((2, "1"), (1, 2L)))
+      }
+      "curl" in {
+        t.curl[Int, String, Long]((3L, (1, "2"))) must_== (("2", 1))
+      }
       "combine" in {
-        val d = t.combine[Int, String, Long](_.toString, _.toLong)
-        d(1) must_== (("1", 1L))
+        t.combine[Int, String, Long](_.toString, _.toLong)(1) must_== (("1", 1L))
       }
       "conjunction" in {
-        val d = t.conjunction[Int, String, Int, Long](_.toString, _.toLong)
-        d((1, 1)) must_== (("1", 1L))
+        t.conjunction[Int, String, Int, Long](_.toString, _.toLong)((1, 2)) must_== (("1", 2L))
       }
       // Category
       "id" in {
