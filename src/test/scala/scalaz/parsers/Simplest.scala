@@ -1,7 +1,8 @@
 package scalaz.parsers
 
+import scalaz.Zip
 import scalaz.parsers.syntax.ParserSyntax
-import scalaz.parsers.tc.{ Alternative, ProductFunctor }
+import scalaz.parsers.tc.Alternative
 import scalaz.std.option._
 
 object Simplest {
@@ -13,13 +14,13 @@ object Simplest {
 
   object ScalazInstances {
 
-    implicit val productFunctorParser: ProductFunctor[Parser] =
-      new ProductFunctor[Parser] {
-        override def and[A, B](fa: Parser[A], fb: Parser[B]): Parser[A /\ B] =
+    implicit val parserZip: Zip[Parser] =
+      new Zip[Parser] {
+        override def zip[A, B](fa: => Parser[A], fb: => Parser[B]): Parser[A /\ B] =
           fa(_).flatMap { case (cs1, a) => fb(cs1).map { case (cs2, b) => cs2 -> (a -> b) } }
       }
 
-    implicit val alternativeParser: Alternative[Parser] =
+    implicit val parserAlternative: Alternative[Parser] =
       new Alternative[Parser] {
         override def or[A](f1: Parser[A], f2: => Parser[A]): Parser[A] =
           chars =>
@@ -31,14 +32,14 @@ object Simplest {
             }
       }
 
-    implicit val productFunctorPrinter: ProductFunctor[Printer] =
-      new ProductFunctor[Printer] {
-        override def and[A, B](fa: Printer[A], fb: Printer[B]): Printer[(A, B)] = {
+    implicit val printerZip: Zip[Printer] =
+      new Zip[Printer] {
+        override def zip[A, B](fa: => Printer[A], fb: => Printer[B]): Printer[(A, B)] = {
           case (a, b) => fa(a) + fb(b)
         }
       }
 
-    implicit val alternativePrinter: Alternative[Printer] =
+    implicit val printerAlternative: Alternative[Printer] =
       new Alternative[Printer] {
         override def or[A](f1: Printer[A], f2: => Printer[A]): Printer[A] = { a =>
           val s1 = f1(a)
@@ -54,7 +55,7 @@ object Simplest {
     case class Sum(e1: Expression, e2: Expression) extends Expression
   }
 
-  def grammar[P[_]: ProductFunctor: Alternative](
+  def grammar[P[_]: Zip: Alternative](
     P: ParserSyntax[P, Option, Option, Unit]
   ): P[Syntax.Expression] = {
     import Syntax._

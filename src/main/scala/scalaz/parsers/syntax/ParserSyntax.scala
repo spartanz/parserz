@@ -1,7 +1,8 @@
 package scalaz.parsers.syntax
 
+import scalaz.Zip
 import scalaz.parsers._
-import scalaz.parsers.tc.{ Alternative, ProductFunctor }
+import scalaz.parsers.tc.Alternative
 
 trait ParserSyntax[P[_], F[_], G[_], E] {
 
@@ -15,8 +16,8 @@ trait ParserSyntax[P[_], F[_], G[_], E] {
 
   def right[A, B](pb: P[B]): P[A \/ B]
 
-  def and[A, B](pa: P[A], pb: P[B])(implicit P: ProductFunctor[P]): P[A /\ B] =
-    P.and(pa, pb)
+  def and[A, B](pa: P[A], pb: P[B])(implicit Z: Zip[P]): P[A /\ B] =
+    Z.zip(pa, pb)
 
   def or[A, B](pa: P[A], pb: => P[B])(implicit A: Alternative[P]): P[A \/ B] =
     A.or(left(pa), right(pb))
@@ -27,7 +28,7 @@ trait ParserSyntax[P[_], F[_], G[_], E] {
 
   implicit final class ParserOps[A](p: P[A]) {
 
-    def /\ [B](other: P[B])(implicit P: ProductFunctor[P]): P[A /\ B] =
+    def /\ [B](other: P[B])(implicit Z: Zip[P]): P[A /\ B] =
       and(p, other)
 
     def \/ [B](other: => P[B])(implicit A: Alternative[P]): P[A \/ B] =
@@ -39,7 +40,7 @@ trait ParserSyntax[P[_], F[_], G[_], E] {
     def ∘ [B](instance: parsing.Equiv[A, B]): P[B] =
       imap(p)(instance)
 
-    def many(implicit P: ProductFunctor[P], A: Alternative[P]): P[List[A]] = {
+    def many(implicit Z: Zip[P], A: Alternative[P]): P[List[A]] = {
       lazy val step: P[List[A]] = ((p /\ delay(step)) \/ pure(())) ∘ parsing.Equiv.list
       step
     }

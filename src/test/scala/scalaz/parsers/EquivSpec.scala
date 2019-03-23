@@ -30,6 +30,11 @@ class EquivSpec extends Specification {
       verify(liftF[Int, Int](a => Some(a + 1), b => Some(b - 1)), 3, 4)
     }
 
+    "liftPartial" in {
+      verify(liftPartial[Int, Int](())({ case a  => a + 1 }, { case b       => b - 1 }), 3, 4)
+      verify(liftPartialF[Int, Int](())({ case a => Some(a + 1) }, { case b => Some(b - 1) }), 3, 4)
+    }
+
     "id" in {
       verify(id[Int], 2, 2)
     }
@@ -61,6 +66,7 @@ class EquivSpec extends Specification {
 
     "conjunction" >> {
       verify(equiv1 /\ equiv2, (0, 0), (1, 2))
+      verify(equiv1 ⓧ equiv2, (0, 0), (1, 2))
     }
 
     "disjunction" >> {
