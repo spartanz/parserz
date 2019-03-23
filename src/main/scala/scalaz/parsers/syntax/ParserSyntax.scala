@@ -1,6 +1,7 @@
 package scalaz.parsers.syntax
 
 import scalaz.parsers._
+import scalaz.parsers.tc.{ Alternative, ProductFunctor }
 
 trait ParserSyntax[P[_], F[_], G[_], E] {
 

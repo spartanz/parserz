@@ -1,61 +1,27 @@
 package scalaz.parsers
 
-import scalaz.data.{ ~>, ∀ }
-import scalaz.parsers.implicits.monadErrorApplicativeError
-import scalaz.parsers.tc.MonadErrorClass
-import scalaz.tc.BindClass.DeriveFlatMap
-import scalaz.tc.FoldableClass.{ DeriveFoldMap, DeriveToList }
-import scalaz.tc._
+import scalaz.{ ApplicativeError, Monad, MonadError, ~> }
 
 object TCInstances {
-  import scalaz.Scalaz.monadApplicative
 
-  implicit val applicativeOption: Applicative[Option] =
-    monadApplicative[Option](implicitly)
+  implicit val optionApplicativeError: ApplicativeError[Option, Unit] =
+    TCInstances0.optionMonadError
 
-  implicit val applicativeErrorOption: ApplicativeError[Option, Unit] =
-    monadErrorApplicativeError[Option, Unit](TCInstances0.monadErrorOption)
-
-  implicit val foldableOption: Foldable[Option] = instanceOf(
-    new FoldableClass[Option] with DeriveFoldMap[Option] with DeriveToList[Option] {
-      override def foldRight[A, B](fa: Option[A], z: => B)(f: (A, => B) => B): B =
-        fa.fold(z)(f(_, z))
-      override def foldLeft[A, B](fa: Option[A], z: B)(f: (B, A) => B): B =
-        fa.fold(z)(f(z, _))
+  implicit def naturalTransformationLoop[F[_]]: F ~> F =
+    new ~>[F, F] {
+      override def apply[A](fa: F[A]): F[A] = fa
     }
-  )
-
-  implicit val OptionToOption: Option ~> Option =
-    ∀.mk[Option ~> Option].from(identity)
-
-  implicit def foldableEither[R]: Foldable[Either[R, ?]] = instanceOf(
-    new FoldableClass[Either[R, ?]] with DeriveFoldMap[Either[R, ?]]
-    with DeriveToList[Either[R, ?]] {
-      override def foldRight[A, B](fa: Either[R, A], z: => B)(f: (A, => B) => B): B =
-        fa.fold(_ => z, f(_, z))
-      override def foldLeft[A, B](fa: Either[R, A], z: B)(f: (B, A) => B): B =
-        fa.fold(_ => z, f(z, _))
-    }
-  )
-
-  implicit def EitherToEither[R]: Either[R, ?] ~> Either[R, ?] =
-    ∀.mk[Either[R, ?] ~> Either[R, ?]].from(identity)
 }
 
 object TCInstances0 {
 
-  val monadErrorOption: MonadError[Option, Unit] = {
-    val F: Monad[Option] = implicitly
-    instanceOf(new MonadErrorClass[Option, Unit] with DeriveFlatMap[Option] {
-      override def raiseError[A](e: Unit): Option[A] =
-        None
-      override def handleError[A](fa: Option[A])(f: Unit => Option[A]): Option[A] =
-        fa.orElse(f(()))
-
-      override def pure[A](a: A): Option[A]                              = F.pure(a)
-      override def ap[A, B](fa: Option[A])(f: Option[A => B]): Option[B] = F.ap(fa)(f)
-      override def map[A, B](ma: Option[A])(f: A => B): Option[B]        = F.map(ma)(f)
-      override def flatten[A](ma: Option[Option[A]]): Option[A]          = F.flatten(ma)
-    })
+  val optionMonadError: MonadError[Option, Unit] = {
+    val F: Monad[Option] = scalaz.std.option.optionInstance
+    new MonadError[Option, Unit] {
+      override def raiseError[A](e: Unit): Option[A]                              = None
+      override def handleError[A](fa: Option[A])(f: Unit => Option[A]): Option[A] = fa.orElse(f(()))
+      override def point[A](a: => A): Option[A]                                   = F.point(a)
+      override def bind[A, B](fa: Option[A])(f: A => Option[B]): Option[B]        = F.bind(fa)(f)
+    }
   }
 }

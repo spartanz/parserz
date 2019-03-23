@@ -1,6 +1,8 @@
 package scalaz.parsers
 
 import org.specs2.mutable.Specification
+import scalaz.std.option._
+import scalaz.std.string._
 
 class SimplestCodecSpec extends Specification {
 
@@ -11,9 +13,8 @@ class SimplestCodecSpec extends Specification {
   }
 
   object Example {
-    import implicits._
-    import TCInstances._
     import Syntax._
+    import TCInstances._
 
     val parsing: Parsing[Option, Option, Unit] = Parsing()
 

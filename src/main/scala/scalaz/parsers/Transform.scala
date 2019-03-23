@@ -1,23 +1,12 @@
 package scalaz.parsers
 
-import scalaz.Scalaz.monadApplicative
-import scalaz.parsers.implicits.monadKleisliCategory
-import scalaz.tc.ProfunctorClass.DeriveDimap
-import scalaz.tc._
+import scalaz.{ Applicative, Monad, Strong }
+import scalaz.parsers.tc.Category
+import scalaz.parsers.syntax.category._
 
-trait CategorySyntax {
-  implicit final class ToCategoryOps[=>:[_, _], B, C](self: B =>: C) {
-    def ∘ [A](f: A =>: B)(implicit ev: CategoryClass[=>:]): A =>: C = ev.compose(self, f)
-  }
-}
+trait Transform[=>:[_, _]] extends Strong[=>:] with Category[=>:] { self =>
 
-object catSyntax extends CategorySyntax
-
-trait TransformClass[=>:[_, _]] extends StrongClass[=>:] with CategoryClass[=>:] {
-
-  implicit private val cc: CategoryClass[=>:] = this
-
-  import catSyntax._
+  implicit private val C: Category[=>:] = self
 
   def duplicate[A]: A =>: (A /\ A)
 
@@ -47,15 +36,15 @@ object Transform {
   def apply[F[_]](
     implicit F: Applicative[F],
     C: Category[λ[(α, β) => α => F[β]]]
-  ): Transform[λ[(α, β) => α => F[β]]] = instanceOf(
-    new TransformClass[λ[(α, β) => α => F[β]]] with DeriveDimap[λ[(α, β) => α => F[β]]] {
+  ): Transform[λ[(α, β) => α => F[β]]] =
+    new Transform[λ[(α, β) => α => F[β]]] {
 
       override def id[A]: A => F[A]                                        = C.id
       override def compose[A, B, C](f: B => F[C], g: A => F[B]): A => F[C] = C.compose(f, g)
 
-      override def lmap[A, B, C](fab: A => F[B])(ca: C => A): C => F[B] =
+      override def mapfst[A, B, C](fab: A => F[B])(ca: C => A): C => F[B] =
         c => fab(ca(c))
-      override def rmap[A, B, C](fab: A => F[B])(bc: B => C): A => F[C] =
+      override def mapsnd[A, B, C](fab: A => F[B])(bc: B => C): A => F[C] =
         a => F.map(fab(a))(bc)
 
       override def first[A, B, C](pab: A => F[B]): A /\ C => F[B /\ C] = {
@@ -108,21 +97,13 @@ object Transform {
         case Right(c) => F.map(cd(c))(Right(_))
       }
     }
-  )
 
-  def apply[F[_]](
-    implicit F: Monad[F]
-  ): Transform[λ[(α, β) => α => F[β]]] =
-    apply[F](
-      monadApplicative[F](implicitly),
-      monadKleisliCategory[F](implicitly)
-    )
+  def apply[F[_]](implicit F: Monad[F]): Transform[λ[(α, β) => α => F[β]]] =
+    apply[F](F, Category.kleisliCategory[F](F))
 
-  trait DeriveTransformFunctions[=>:[_, _]] extends TransformClass[=>:] {
+  trait DeriveTransformFunctions[=>:[_, _]] extends Transform[=>:] { self =>
 
-    implicit private val cc: CategoryClass[=>:] = this
-
-    import catSyntax._
+    implicit private val C: Category[=>:] = self
 
     override def combine[A, B, C](ab: A =>: B, ac: A =>: C): A =>: (B /\ C) =
       first[A, B, C](ab) ∘ second[A, C, A](ac) ∘ duplicate[A]
@@ -142,6 +123,5 @@ object Transform {
     override def conjunction[A, B, C, D](ab: A =>: B, cd: C =>: D): (A /\ C) =>: (B /\ D) =
       curl[D, B, C] ∘ swap2[D, C, B] ∘ curl[C /\ B, D, A] ∘
         swap2[(C, B), A, D] ∘ cross(ab, cd)
-
   }
 }

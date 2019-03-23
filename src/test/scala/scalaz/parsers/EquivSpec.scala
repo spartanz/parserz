@@ -1,10 +1,12 @@
 package scalaz.parsers
 
 import org.specs2.mutable.Specification
+import scalaz.parsers.tc.Category
+import scalaz.std.option._
 
 class EquivSpec extends Specification {
 
-  import implicits._
+  import Category._
   import TCInstances._
 
   private val parsing: Parsing[Option, Option, Unit] = Parsing()
