@@ -18,7 +18,8 @@ class ErrorTrackingExampleSpec extends Specification {
     case object Mul extends Operator
   }
 
-  type Eff[A] = EitherT[String, RWS[Unit, List[String], Int, ?], A]
+  // Effect = Either[Error, Result] + Writer[Position & Error] + State[CurrentPosition]
+  type Eff[A] = EitherT[String, RWS[Unit, List[Int /\ String], Int, ?], A]
 
   object Parser extends ParserInstances2 {
 
@@ -26,14 +27,14 @@ class ErrorTrackingExampleSpec extends Specification {
     val equiv: parsing.Equiv.type          = parsing.Equiv
 
     type Equiv[A, B] = parsing.Equiv[A, B]
-    type Codec[A]    = parsing.Codec[List[(Char, Int)], A]
+    type Codec[A]    = parsing.Codec[List[Char /\ Int], A]
 
     val char: Codec[Char] = parsing.Codec(
       equiv.liftF({
-        case (h, i) :: t => EitherT(ReaderWriterState((_, _) => (Nil, \/-(t -> h), i)))
-        case Nil         => EitherT.left("Empty input")
+        case (c, i) :: cs => EitherT(ReaderWriterState((_, _) => (Nil, \/-(cs -> c), i)))
+        case Nil          => EitherT.left("Empty input")
       }, {
-        case (cc, c) => EitherT.right(cc :+ (c -> 0))
+        case (cs, c) => EitherT.right(cs :+ (c -> 0))
       })
     )
   }
@@ -44,7 +45,7 @@ class ErrorTrackingExampleSpec extends Specification {
       override def bind[A, B](fa: Eff[A])(f: A => Eff[B]): Eff[B] = monad.bind(fa)(f)
 
       override def raiseError[A](e: String): Eff[A] =
-        EitherT(ReaderWriterState((_, s) => (List(s"pos $s: $e"), -\/(s"pos $s: $e"), s)))
+        EitherT(ReaderWriterState((_, i) => (List(i -> e), -\/(e), i)))
 
       override def handleError[A](fa: Eff[A])(f: String => Eff[A]): Eff[A] =
         EitherT(fa.run.flatMap {
@@ -53,11 +54,13 @@ class ErrorTrackingExampleSpec extends Specification {
         })
     }
 
-    type Rws[A] = RWS[Unit, List[String], Int, A]
-    implicit val fooFoldable: Foldable[Rws] = new Foldable[Rws] with Foldable.FromFoldr[Rws] {
-      override def foldRight[A, B](fa: Rws[A], z: => B)(f: (A, => B) => B): B =
-        scalaz.idInstance.foldr(fa.runZero(())._2, z)(a => b => f(a, b))
-    }
+    type WriterState[A] = RWS[Unit, List[Int /\ String], Int, A]
+
+    implicit val writerStateFoldable: Foldable[WriterState] =
+      new Foldable[WriterState] with Foldable.FromFoldr[WriterState] {
+        override def foldRight[A, B](fa: WriterState[A], z: => B)(f: (A, => B) => B): B =
+          scalaz.idInstance.foldr(fa.runZero(())._2, z)(a => b => f(a, b))
+      }
   }
 
   trait ParserInstances1 {
@@ -122,7 +125,7 @@ class ErrorTrackingExampleSpec extends Specification {
     lazy val expression: Codec[Expression] = case2
   }
 
-  def parse(s: String): (List[String], String \/ (String, Syntax.Expression)) = {
+  def parse(s: String): (List[Int /\ String], String \/ (String, Syntax.Expression)) = {
     val (log, res, _) = Example.expression
       .parse(s.toCharArray.toList.zipWithIndex)
       .run
@@ -131,76 +134,91 @@ class ErrorTrackingExampleSpec extends Specification {
     log -> res
   }
 
-  def parse2(s: String): String \/ (String, Syntax.Expression) =
+  def parsingResult(s: String): String \/ (String, Syntax.Expression) =
     parse(s)._2
+
+  def lastParsingError(s: String): Option[Int /\ String] =
+    Option(parse(s)._1.distinct.groupBy(_._1).maxBy(_._1))
+      .map { case (p, es) => p -> es.unzip._2.mkString(", ") }
 
   def print(e: Syntax.Expression): String \/ String =
     Example.expression.print0(e).run.map(_.toEither).runZero(())._2.map(_.unzip._1.mkString)
 
-  "Example parser" should {
+  "Error tracking parser" should {
     import Syntax._
 
     "not parse empty input" in {
-      parse2("") must_=== Left("Empty input")
+      parsingResult("") must_=== Left("Empty input")
     }
     "parse a digit into a literal" in {
-      parse2("5") must_=== Right("" -> Constant(5))
+      parsingResult("5") must_=== Right("" -> Constant(5))
     }
     "parse several digits" in {
-      parse2("567") must_=== Right("" -> Constant(567))
+      parsingResult("567") must_=== Right("" -> Constant(567))
     }
 
     "not parse a letter and indicate failure" in {
-      parse("A") must_=== List("pos 0: Expected: [0-9]") -> Left("pos 0: Expected: [0-9]")
+      parsingResult("A") must_=== Left("Expected: [0-9]")
     }
     "not parse '+' by itself" in {
-      parse("+") must_=== List("pos 0: Expected: [0-9]") -> Left("pos 0: Expected: [0-9]")
+      parsingResult("+") must_=== Left("Expected: [0-9]")
     }
 
     "parse operation with 2 numbers" in {
-      parse2("5+6") must_=== Right("" -> Operation(Constant(5), Add, Constant(6)))
-      parse2("5*6") must_=== Right("" -> Operation(Constant(5), Mul, Constant(6)))
+      parsingResult("5+6") must_=== Right("" -> Operation(Constant(5), Add, Constant(6)))
+      parsingResult("5*6") must_=== Right("" -> Operation(Constant(5), Mul, Constant(6)))
     }
     "parse operation with 3 numbers" in {
-      parse2("5+6+7") must_=== Right(
+      parsingResult("5+6+7") must_=== Right(
         "" -> Operation(Operation(Constant(5), Add, Constant(6)), Add, Constant(7))
       )
-      parse2("5*6*7") must_=== Right(
+      parsingResult("5*6*7") must_=== Right(
         "" -> Operation(Operation(Constant(5), Mul, Constant(6)), Mul, Constant(7))
       )
     }
 
     "report errors" in {
+      lastParsingError("$") must_=== Some(0      -> "Expected: [0-9]")
+      lastParsingError("1a") must_=== Some(1     -> "Expected: [0-9], Expected: '*', Expected: '+'")
+      lastParsingError("1**2") must_=== Some(2   -> "Expected: [0-9]")
+      lastParsingError("1*2**3") must_=== Some(4 -> "Expected: [0-9]")
+    }
+
+    "produce detailed log while parsing" in {
+      parse("$") must_=== List(
+        0 -> "Expected: [0-9]"
+      ) -> Left("Expected: [0-9]")
+
       parse("1a") must_=== List(
-        "pos 1: Expected: [0-9]",
-        "pos 1: Expected: '*'",
-        "pos 1: Expected: '+'"
+        1 -> "Expected: [0-9]",
+        1 -> "Expected: '*'",
+        1 -> "Expected: '+'"
       ) -> Right("a" -> Constant(1))
 
       parse("1**2") must_=== List(
-        "pos 1: Expected: [0-9]",
-        "pos 2: Expected: [0-9]",
-        "pos 1: Expected: '+'"
+        1 -> "Expected: [0-9]",
+        2 -> "Expected: [0-9]",
+        1 -> "Expected: '+'"
       ) -> Right("**2" -> Constant(1))
 
       parse("1*2**3") must_=== List(
-        "pos 1: Expected: [0-9]",
-        "pos 3: Expected: [0-9]",
-        "pos 4: Expected: [0-9]",
-        "pos 3: Expected: [0-9]",
-        "pos 4: Expected: [0-9]",
-        "pos 3: Expected: '+'"
+        1 -> "Expected: [0-9]",
+        3 -> "Expected: [0-9]",
+        4 -> "Expected: [0-9]",
+        3 -> "Expected: [0-9]",
+        4 -> "Expected: [0-9]",
+        3 -> "Expected: '+'"
       ) -> Right("**3" -> Operation(Constant(1), Mul, Constant(2)))
     }
 
     "parse expressions" in {
-      parse2("12*34+56") must_=== Right(
+      parsingResult("12*34+56") must_=== Right(
         "" -> Operation(Operation(Constant(12), Mul, Constant(34)), Add, Constant(56))
       )
-      parse2("12+34*56") must_=== Right(
+      parsingResult("12+34*56") must_=== Right(
         "" -> Operation(Constant(12), Add, Operation(Constant(34), Mul, Constant(56)))
       )
-      parse2("1*2+3*4") must_=== Right(
+      parsingResult("1*2+3*4") must_=== Right(
         "" -> Operation(
           Operation(Constant(1), Mul, Constant(2)),
           Add,
@@ -210,7 +228,7 @@ class ErrorTrackingExampleSpec extends Specification {
     }
   }
 
-  "Example printer" should {
+  "Error tracking printer" should {
     import Syntax._
 
     "print a single-digit number" in {
@@ -254,7 +272,7 @@ class ErrorTrackingExampleSpec extends Specification {
 
     "not print an incorrectly composed expression" in {
       print(Operation(Constant(1), Add, Operation(Constant(2), Add, Constant(3)))) must_=== Left(
-        "pos 0: Expected: Constant"
+        "Expected: Constant"
       )
       print(
         Operation(
@@ -262,7 +280,7 @@ class ErrorTrackingExampleSpec extends Specification {
           Add,
           Operation(Constant(3), Add, Constant(4))
         )
-      ) must_=== Left("pos 0: Expected: Constant")
+      ) must_=== Left("Expected: Constant")
     }
   }
 }
