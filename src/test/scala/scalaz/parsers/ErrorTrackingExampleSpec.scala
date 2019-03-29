@@ -1,11 +1,11 @@
 package scalaz.parsers
 
 import org.specs2.mutable.Specification
-import scalaz.parsers.tc.Category
-import scalaz.std.either._
 import scalaz.std.string._
+import scalaz.std.list._
+import scalaz.{ -\/, EitherT, Monad, MonadError, Writer, \/- }
 
-class ClassicExampleSpec extends Specification {
+class ErrorTrackingExampleSpec extends Specification {
 
   object Syntax {
     sealed trait Expression
@@ -17,15 +17,43 @@ class ClassicExampleSpec extends Specification {
     case object Mul extends Operator
   }
 
+  type Eff[A] = EitherT[String, Writer[List[String], ?], A]
+
+  object Parser extends ParserInstances2 {
+
+    val parsing: Parsing[Eff, Eff, String] = Parsing()
+    val equiv: parsing.Equiv.type          = parsing.Equiv
+
+    type Equiv[A, B] = parsing.Equiv[A, B]
+    type Codec[A]    = parsing.Codec[List[(Char, Int)], A]
+  }
+
+  trait ParserInstances2 extends ParserInstances1 {
+    implicit val monadError: MonadError[Eff, String] = new MonadError[Eff, String] {
+      override def point[A](a: => A): Eff[A]                      = monad.point(a)
+      override def bind[A, B](fa: Eff[A])(f: A => Eff[B]): Eff[B] = monad.bind(fa)(f)
+
+      override def raiseError[A](e: String): Eff[A] =
+        EitherT(Writer(List(e), -\/(e)))
+
+      override def handleError[A](fa: Eff[A])(f: String => Eff[A]): Eff[A] =
+        EitherT(fa.run.flatMap {
+          case -\/(e) => f(e).run
+          case \/-(_) => fa.run
+        })
+    }
+  }
+
+  trait ParserInstances1 {
+    val monad: Monad[Eff] = implicitly
+  }
+
   object Example {
-    import TCInstances._
     import Syntax._
-    import Category._
+    import TCInstances.naturalTransformationLoop
 
-    val parsing: Parsing[Either[String, ?], Either[String, ?], String] = Parsing()
-
-    import parsing.Equiv
-    import parsing.Equiv._
+    import Parser._
+    import Parser.equiv._
 
     val constantEq: Equiv[Int, Constant] =
       lift(Constant, _.value)
@@ -44,16 +72,13 @@ class ClassicExampleSpec extends Specification {
         { case Operation(e1, `op`, e2) => e1 -> (op -> e2) }
       )
 
-    type Codec[A] = parsing.Codec[String, A]
-
     val char: Codec[Char] = parsing.Codec(
-      liftF(
-        s =>
-          s.headOption
-            .fold[Either[String, Char]](Left("Empty input"))(Right(_))
-            .map(s.drop(1) -> _),
-        { case (s, c) => Right(s + c) }
-      )
+      liftF({
+        case (h, i) :: t => EitherT(Writer(List("Position: " + i), \/-(t -> h)))
+        case Nil         => EitherT.left("Empty input")
+      }, {
+        case (cc, c) => EitherT.right(cc :+ (c -> 0))
+      })
     )
 
     val digit: Codec[Char] = char ∘ ensure("Expected: [0-9]")(_.isDigit)
@@ -68,6 +93,7 @@ class ClassicExampleSpec extends Specification {
       { case Mul => '*' }
     )
 
+    // todo: how to get this error?
     val integer: Codec[Int] = digit.many1("Expected at least one digit") ∘ lift(
       chars => new String(chars.toArray).toInt,
       int => int.toString.toList
@@ -77,6 +103,7 @@ class ClassicExampleSpec extends Specification {
 
     val case0: Codec[Expression] = constant ∘ constantExpressionEq
 
+    // todo: how to get this error?
     val case1: Codec[Expression] = (case0 ~ (star ~ case0).many) ∘ foldl("hm...")(
       operationExpressionEq(Mul)
     )
@@ -88,58 +115,109 @@ class ClassicExampleSpec extends Specification {
     lazy val expression: Codec[Expression] = case2
   }
 
-  def parse(s: String): Either[String, (String, Syntax.Expression)] =
-    Example.expression.parse(s)
+  def parse(s: String): (List[String], String \/ (String, Syntax.Expression)) =
+    Example.expression
+      .parse(
+        s.toCharArray.toList.zipWithIndex
+      )
+      .run
+      .map(
+        _.toEither.map { case (cc, exp) => cc.unzip._1.mkString -> exp }
+      )
+      .run
 
-  def print(e: Syntax.Expression): Either[String, String] =
-    Example.expression.print0(e)
+  def parse2(s: String): String \/ (String, Syntax.Expression) =
+    parse(s)._2
+
+  def print(e: Syntax.Expression): String \/ String =
+    Example.expression.print0(e).run.map(_.toEither).run._2.map(_.unzip._1.mkString)
 
   "Example parser" should {
     import Syntax._
 
     "not parse empty input" in {
-      parse("") must_=== Left("Empty input")
+      parse2("") must_=== Left("Empty input")
     }
     "parse a digit into a literal" in {
-      parse("5") must_=== Right("" -> Constant(5))
+      parse2("5") must_=== Right("" -> Constant(5))
     }
     "parse several digits" in {
-      parse("567") must_=== Right("" -> Constant(567))
+      parse2("567") must_=== Right("" -> Constant(567))
     }
 
     "not parse a letter and indicate failure" in {
-      parse("A") must_=== Left("Expected: [0-9]")
+      parse("A") must_=== List("Position: 0", "Expected: [0-9]") -> Left("Expected: [0-9]")
     }
     "not parse '+' by itself" in {
-      parse("+") must_=== Left("Expected: [0-9]")
+      parse("+") must_=== List("Position: 0", "Expected: [0-9]") -> Left("Expected: [0-9]")
     }
 
     "parse operation with 2 numbers" in {
-      parse("5+6") must_=== Right("" -> Operation(Constant(5), Add, Constant(6)))
-      parse("5*6") must_=== Right("" -> Operation(Constant(5), Mul, Constant(6)))
+      parse2("5+6") must_=== Right("" -> Operation(Constant(5), Add, Constant(6)))
+      parse2("5*6") must_=== Right("" -> Operation(Constant(5), Mul, Constant(6)))
     }
     "parse operation with 3 numbers" in {
-      parse("5+6+7") must_=== Right(
+      parse2("5+6+7") must_=== Right(
         "" -> Operation(Operation(Constant(5), Add, Constant(6)), Add, Constant(7))
       )
-      parse("5*6*7") must_=== Right(
+      parse2("5*6*7") must_=== Right(
         "" -> Operation(Operation(Constant(5), Mul, Constant(6)), Mul, Constant(7))
       )
     }
 
-    "parse till it can" in {
-      parse("1**2") must_=== Right("**2"   -> Constant(1))
-      parse("1*2**3") must_=== Right("**3" -> Operation(Constant(1), Mul, Constant(2)))
+    "report errors" in {
+      parse("1a") must_=== List(
+        "Position: 0",
+        "Position: 1",
+        "Expected: [0-9]",
+        "Position: 1",
+        "Expected: '*'",
+        "Position: 1",
+        "Expected: '+'"
+      ) -> Right("a" -> Constant(1))
+
+      parse("1**2") must_=== List(
+        "Position: 0",
+        "Position: 1",
+        "Expected: [0-9]",
+        "Position: 1",
+        "Position: 2",
+        "Expected: [0-9]",
+        "Position: 1",
+        "Expected: '+'"
+      ) -> Right("**2" -> Constant(1))
+
+      parse("1*2**3") must_=== List(
+        "Position: 0",
+        "Position: 1",
+        "Expected: [0-9]",
+        "Position: 1",
+        "Position: 2",
+        "Position: 3",
+        "Expected: [0-9]",
+        "Position: 3",
+        "Position: 4",
+        "Expected: [0-9]",
+        "Position: 1",
+        "Position: 2",
+        "Position: 3",
+        "Expected: [0-9]",
+        "Position: 3",
+        "Position: 4",
+        "Expected: [0-9]",
+        "Position: 3",
+        "Expected: '+'"
+      ) -> Right("**3" -> Operation(Constant(1), Mul, Constant(2)))
     }
 
     "parse expressions" in {
-      parse("12*34+56") must_=== Right(
+      parse2("12*34+56") must_=== Right(
         "" -> Operation(Operation(Constant(12), Mul, Constant(34)), Add, Constant(56))
       )
-      parse("12+34*56") must_=== Right(
+      parse2("12+34*56") must_=== Right(
         "" -> Operation(Constant(12), Add, Operation(Constant(34), Mul, Constant(56)))
       )
-      parse("1*2+3*4") must_=== Right(
+      parse2("1*2+3*4") must_=== Right(
         "" -> Operation(
           Operation(Constant(1), Mul, Constant(2)),
           Add,

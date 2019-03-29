@@ -3,8 +3,8 @@ package scalaz.parsers.tc
 import scalaz.Monad
 
 trait Category[=>:[_, _]] {
-  def id[A]: =>:[A, A]
-  def compose[A, B, C](f: =>:[B, C], g: =>:[A, B]): =>:[A, C]
+  def id[A]: A =>: A
+  def compose[A, B, C](f: B =>: C, g: A =>: B): A =>: C
 }
 
 object Category {
