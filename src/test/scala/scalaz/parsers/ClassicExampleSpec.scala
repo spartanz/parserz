@@ -127,7 +127,6 @@ class ClassicExampleSpec extends Specification {
       )
     }
 
-    // todo: report errors
     "parse till it can" in {
       parse("1**2") must_=== Right("**2"   -> Constant(1))
       parse("1*2**3") must_=== Right("**3" -> Operation(Constant(1), Mul, Constant(2)))
