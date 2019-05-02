@@ -25,11 +25,13 @@ class ErrorTrackingExampleSpec extends Specification {
 
     val parsing: Parsing[Eff, Eff, String] = Parsing()
     val equiv: parsing.Equiv.type          = parsing.Equiv
+    val codec: parsing.Codec.type          = parsing.Codec
+    val syntax: parsing.syntax.type        = parsing.syntax
 
     type Equiv[A, B] = parsing.Equiv[A, B]
     type Codec[A]    = parsing.Codec[List[Char /\ Int], A]
 
-    val char: Codec[Char] = parsing.Codec(
+    val char: Codec[Char] = codec(
       equiv.liftF({
         case (c, i) :: cs => EitherT(ReaderWriterState((_, _) => (Nil, \/-(cs -> c), i)))
         case Nil          => EitherT.left("Empty input")
@@ -73,6 +75,8 @@ class ErrorTrackingExampleSpec extends Specification {
 
     import Parser._
     import Parser.equiv._
+    import Parser.codec._
+    import Parser.syntax._
 
     val constantEq: Equiv[Int, Constant] =
       lift(Constant, _.value)
@@ -129,7 +133,7 @@ class ErrorTrackingExampleSpec extends Specification {
     val (log, res, _) = Example.expression
       .parse(s.toCharArray.toList.zipWithIndex)
       .run
-      .map(_.toEither.map { case (cc, exp) => cc.unzip._1.mkString -> exp })
+      .map(_.toEither.map { case (cc, exp) => cc.map(_._1).mkString -> exp })
       .runZero(())
     log -> res
   }
@@ -139,10 +143,10 @@ class ErrorTrackingExampleSpec extends Specification {
 
   def lastParsingError(s: String): Option[Int /\ String] =
     Option(parse(s)._1.distinct.groupBy(_._1).maxBy(_._1))
-      .map { case (p, es) => p -> es.unzip._2.mkString(", ") }
+      .map { case (p, es) => p -> es.map(_._2).mkString(", ") }
 
   def print(e: Syntax.Expression): String \/ String =
-    Example.expression.print0(e).run.map(_.toEither).runZero(())._2.map(_.unzip._1.mkString)
+    Example.expression.print0(e).run.map(_.toEither).runZero(())._2.map(_.map(_._1).mkString)
 
   "Error tracking parser" should {
     import Syntax._

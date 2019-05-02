@@ -34,7 +34,7 @@ sealed trait Parsing[F[_], G[_], E] {
   protected val AB: Transform[λ[(α, β) => α => F[β]]]
   protected val BA: Transform[λ[(α, β) => α => G[β]]]
 
-  object syntax extends EquivSyntax
+  object syntax extends EquivSyntax with ParserSyntax
 
   sealed trait Equiv[A, B] {
     def to: A => F[B]
@@ -221,8 +221,34 @@ sealed trait Parsing[F[_], G[_], E] {
     }
   }
 
-  case class Codec[I, A](eq: Equiv[I, (I, A)]) { self =>
-    import syntax._
+  trait ParserOps[P[_]] { self =>
+    def zip[A, B](p1: P[A], p2: P[B]): P[A /\ B]
+    def alt[A, B](p1: P[A], p2: P[B])(implicit AF: Alternative[F]): P[A \/ B]
+    def map[A, B](p: P[A])(equiv: Equiv[A, B]): P[B]
+    def list[A](p: P[A])(implicit AF: Alternative[F]): P[List[A]]
+    // todo: return P[NonEmptyList[A]]
+    def nel[A](e: E)(p: P[A])(implicit AF: Alternative[F]): P[List[A]]
+
+    // to give parser a readable name
+    def tagged[A](t: String)(p: P[A]): P[A]
+  }
+
+  trait ParserSyntax {
+    implicit final class ToParserOps1[P[_], A](self: P[A]) {
+      def ~ [B](that: P[B])(implicit P: ParserOps[P]): P[(A, B)] = P.zip(self, that)
+
+      def | [B](that: P[B])(implicit P: ParserOps[P], AF: Alternative[F]): P[A \/ B] =
+        P.alt(self, that)
+      def ∘ [B](equiv: Equiv[A, B])(implicit P: ParserOps[P]): P[B]             = P.map(self)(equiv)
+      def many(implicit P: ParserOps[P], AF: Alternative[F]): P[List[A]]        = P.list(self)
+      def many1(e: E)(implicit P: ParserOps[P], AF: Alternative[F]): P[List[A]] = P.nel(e)(self)
+    }
+    implicit final class ToParserOps2(self: String) {
+      def @@ [P[_], A](p: P[A])(implicit P: ParserOps[P]): P[A] = P.tagged(self)(p)
+    }
+  }
+
+  case class Codec[I, A](eq: Equiv[I, (I, A)]) {
 
     def parse(i: I): F[(I, A)] =
       eq.to(i)
@@ -232,62 +258,69 @@ sealed trait Parsing[F[_], G[_], E] {
 
     def print0(a: A)(implicit M: Monoid[I]): G[I] =
       eq.from(M.zero -> a)
-
-    // Zip functionality
-    def ~ [B](that: Codec[I, B]): Codec[I, (A, B)] =
-      Codec(
-        Equiv[I, (I, (A, B))](
-          AB.compose[I, (I, A), (I, (A, B))](
-            { case (i1, a) => F.map(that.eq.to(i1)) { case (i2, b) => (i2, (a, b)) } },
-            self.eq.to
-          ), {
-            case (i, (a, b)) =>
-              BA.compose[(I, A), I, I](
-                i1 => that.eq.from((i1, b)),
-                self.eq.from
-              )((i, a))
-          }
-        )
-      )
-
-    // Alternative functionality
-    def | [B](that: Codec[I, B])(implicit AF: Alternative[F]): Codec[I, A \/ B] =
-      Codec(
-        Equiv[I, (I, A \/ B)](
-          i =>
-            AF.or(
-              F.map(self.eq.to(i)) { case (i1, a) => (i1, Left(a)) },
-              F.map(that.eq.to(i)) { case (i2, b) => (i2, Right(b)) }
-            ), {
-            case (i, Left(a))  => self.eq.from((i, a))
-            case (i, Right(b)) => that.eq.from((i, b))
-          }
-        )
-      )
-
-    // IsoMonad functionality
-    def ∘ [B](equiv: Equiv[A, B]): Codec[I, B] =
-      Codec(
-        self.eq >>> Equiv[(I, A), (I, B)](
-          { case (i, a) => F.map(equiv.to(a))((i, _)) },
-          { case (i, b) => G.map(equiv.from(b))((i, _)) }
-        )
-      )
-
-    def many(implicit AF: Alternative[F]): Codec[I, List[A]] = {
-      lazy val step: Codec[I, List[A]] =
-        ((self ~ Codec(Equiv(step.eq.to(_), step.eq.from(_)))) | Codec.pure(())) ∘ Equiv.list
-      step
-    }
-
-    // todo: return Codec[I, NonEmptyList[A]]
-    def many1(e: E)(implicit AF: Alternative[F]): Codec[I, List[A]] =
-      (self ~ many) ∘ Equiv.nel(e)
   }
 
   object Codec {
 
     def pure[I, A](a: A): Codec[I, A] =
-      Codec(Equiv.lift[I, (I, A)]((_, a), _._1))
+      apply(Equiv.lift[I, (I, A)]((_, a), _._1))
+
+    implicit def parserOps[I]: ParserOps[Codec[I, ?]] = new ParserOps[Codec[I, ?]] {
+      import syntax._
+
+      // Zip functionality
+      override def zip[A, B](p1: Codec[I, A], p2: Codec[I, B]): Codec[I, (A, B)] =
+        apply(
+          Equiv[I, (I, (A, B))](
+            AB.compose[I, (I, A), (I, (A, B))](
+              { case (i1, a) => F.map(p2.eq.to(i1)) { case (i2, b) => (i2, (a, b)) } },
+              p1.eq.to
+            ), {
+              case (i, (a, b)) =>
+                BA.compose[(I, A), I, I](
+                  i1 => p2.eq.from((i1, b)),
+                  p1.eq.from
+                )((i, a))
+            }
+          )
+        )
+
+      // Alternative functionality
+      override def alt[A, B](p1: Codec[I, A], p2: Codec[I, B])(
+        implicit AF: Alternative[F]
+      ): Codec[I, A \/ B] =
+        apply(
+          Equiv[I, (I, A \/ B)](
+            i =>
+              AF.or(
+                F.map(p1.eq.to(i)) { case (i1, a) => (i1, Left(a)) },
+                F.map(p2.eq.to(i)) { case (i2, b) => (i2, Right(b)) }
+              ), {
+              case (i, Left(a))  => p1.eq.from((i, a))
+              case (i, Right(b)) => p2.eq.from((i, b))
+            }
+          )
+        )
+
+      // IsoFunctor functionality
+      override def map[A, B](p: Codec[I, A])(equiv: Equiv[A, B]): Codec[I, B] =
+        apply(
+          p.eq >>> Equiv[(I, A), (I, B)](
+            { case (i, a) => F.map(equiv.to(a))((i, _)) },
+            { case (i, b) => G.map(equiv.from(b))((i, _)) }
+          )
+        )
+
+      override def list[A](p: Codec[I, A])(implicit AF: Alternative[F]): Codec[I, List[A]] = {
+        lazy val step: Codec[I, List[A]] =
+          map(alt(zip(p, apply(Equiv(step.eq.to(_), step.eq.from(_)))), pure(())))(Equiv.list)
+        step
+      }
+
+      override def nel[A](e: E)(p: Codec[I, A])(implicit AF: Alternative[F]): Codec[I, List[A]] =
+        map(zip(p, list(p)))(Equiv.nel(e))
+
+      override def tagged[A](t: String)(p: Codec[I, A]): Codec[I, A] = p
+    }
   }
 }

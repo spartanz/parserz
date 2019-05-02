@@ -21,6 +21,8 @@ class SimplestCodecSpec extends Specification {
     import parsing.Codec
     import parsing.Equiv
     import parsing.Equiv._
+    import parsing.Codec._
+    import parsing.syntax._
 
     val constantEq: Equiv[Int, Constant] =
       lift(Constant, _.value)
