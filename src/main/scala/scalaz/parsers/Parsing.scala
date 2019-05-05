@@ -265,6 +265,11 @@ sealed trait Parsing[F[_], G[_], E] {
     def pure[I, A](a: A): Codec[I, A] =
       apply(Equiv.lift[I, (I, A)]((_, a), _._1))
 
+    def delay[I, A](pa: => Codec[I, A]): Codec[I, A] = {
+      lazy val pa0 = pa
+      apply(Equiv(pa0.eq.to(_), pa0.eq.from(_)))
+    }
+
     implicit def parserOps[I]: ParserOps[Codec[I, ?]] = new ParserOps[Codec[I, ?]] {
       import syntax._
 
