@@ -126,7 +126,7 @@ class ErrorTrackingExampleSpec extends Specification {
       operationExpressionEq(Add)
     )
 
-    lazy val expression: Codec[Expression] = case2
+    val expression: Codec[Expression] = case2
   }
 
   def parse(s: String): (List[Int /\ String], String \/ (String, Syntax.Expression)) = {

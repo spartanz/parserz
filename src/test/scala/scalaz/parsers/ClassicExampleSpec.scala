@@ -87,7 +87,7 @@ class ClassicExampleSpec extends Specification {
       operationExpressionEq(Add)
     )
 
-    lazy val expression: Codec[Expression] = case2
+    val expression: Codec[Expression] = case2
   }
 
   def parse(s: String): Either[String, (String, Syntax.Expression)] =
