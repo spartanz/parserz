@@ -1,10 +1,8 @@
 package scalaz.parsers
 
 import org.specs2.mutable.Specification
-import scalaz.parsers.tc.{ Alternative, Category }
+import scalaz.parsers.tc.Category
 import scalaz.std.either._
-
-import scala.collection.mutable
 
 class DocumentationExampleSpec extends Specification {
 
@@ -122,127 +120,26 @@ class DocumentationExampleSpec extends Specification {
         codec.delay(pa)
     }
 
-    sealed trait Desc
-    case class Input(tag: String)                   extends Desc
-    case class Mapped(tag: String, desc: Desc)      extends Desc
-    case class Seq(tag: String, desc: List[Desc])   extends Desc
-    case class Alt(tag: String, desc: List[Desc])   extends Desc
-    case class Many(tag: String, desc: Desc)        extends Desc
-    case class Many1(tag: String, desc: Desc)       extends Desc
-    case class Delay(tag: String, desc: () => Desc) extends Desc
+    import cfg._
 
-    object Desc {
+    implicit private val descOps: env.parsing.ParserOps[CFGP] = CFGP.parserOps(env.parsing)
 
-      def tag: Desc => String = {
-        case Input(tag)     => tag
-        case Mapped(tag, _) => tag
-        case Seq(tag, _)    => tag
-        case Alt(tag, _)    => tag
-        case Many(tag, _)   => tag
-        case Many1(tag, _)  => tag
-        case Delay(tag, _)  => tag
-      }
-
-      def tagged(t: String): Desc => Desc = {
-        case d @ Input(_)     => d.copy(tag = t)
-        case d @ Mapped(_, _) => d.copy(tag = t)
-        case d @ Seq(_, _)    => d.copy(tag = t)
-        case d @ Alt(_, _)    => d.copy(tag = t)
-        case d @ Many(_, _)   => d.copy(tag = t)
-        case d @ Many1(_, _)  => d.copy(tag = t)
-        case d @ Delay(_, _)  => d.copy(tag = t)
-      }
-
-      def show(desc: Desc): String = {
-        val tag = Desc.tag(desc)
-        if (tag.nonEmpty) s"<$tag>"
-        else
-          desc match {
-            case Input(_)     => ""
-            case Mapped(_, d) => show(d)
-            case Seq(_, ds)   => ds.map(show).mkString(" ")
-            case Alt(_, ds)   => ds.map(show).mkString("(", " | ", ")")
-            case Many(_, d)   => "List(" + show(d) + ")"
-            case Many1(_, d)  => "NEL(" + show(d) + ")"
-            case Delay(_, d)  => show(d())
-          }
-      }
-    }
-
-    import env.parsing.Equiv
-    import env.parsing.ParserOps
-
-    object Docs extends Grammar[Doc] {
-      override def char: Doc[Char]                 = Doc(Input("char"))
-      override def delay[A](pa: => Doc[A]): Doc[A] = Doc(Delay("", () => pa.desc))
-    }
-
-    case class Doc[A](desc: Desc) {
-
-      def bnf: List[String] =
-        Doc.bnf(Nil)(List(desc)).collect { case (n, v) if n.nonEmpty => s"<$n>$v" }.distinct
-    }
-
-    object Doc {
-
-      def bnf(z: List[String -> String])(desc: List[Desc]): List[String -> String] = {
-        val visited: mutable.Set[Desc] = mutable.Set.empty
-
-        def bnf1(z: List[String -> String])(desc: List[Desc]): List[String -> String] =
-          desc.foldLeft(z)(
-            (acc, dd) =>
-              if (visited.contains(dd)) acc
-              else {
-                visited += dd
-                (dd match {
-                  case Input(_) =>
-                    Nil
-                  case Mapped(tag, d) =>
-                    bnf1(List(tag -> (" ::= " + Desc.show(d))))(List(d))
-                  case Seq(tag, ds) =>
-                    bnf1(List(tag -> (" ::= " + ds.map(Desc.show).mkString(" "))))(ds)
-                  case Alt(tag, ds) =>
-                    bnf1(List(tag -> (" ::= " + ds.map(Desc.show).mkString("(", " | ", ")"))))(ds)
-                  case Many(tag, d) =>
-                    bnf1(List(tag -> (" ::= List(" + Desc.show(d) + ")")))(List(d))
-                  case Many1(tag, d) =>
-                    bnf1(List(tag -> (" ::= NEL(" + Desc.show(d) + ")")))(List(d))
-                  case Delay(tag, d) => bnf1(List(tag -> (" ::= " + Desc.show(d()))))(List(d()))
-                }) ::: acc
-              }
-          )
-
-        bnf1(z)(desc)
-      }
-
-      implicit def parserOps[I]: ParserOps[Doc] = new ParserOps[Doc] {
-        type F[A] = Either[String, A]
-        override def zip[A, B](p1: Doc[A], p2: Doc[B]): Doc[A /\ B] =
-          Doc(Seq("", List(p1.desc, p2.desc)))
-        override def alt[A, B](p1: Doc[A], p2: Doc[B])(implicit AF: Alternative[F]): Doc[A \/ B] =
-          Doc(Alt("", List(p1.desc, p2.desc)))
-        override def map[A, B](p: Doc[A])(equiv: Equiv[A, B]): Doc[B] =
-          Doc(Mapped("", p.desc))
-        override def list[A](p: Doc[A])(implicit AF: Alternative[F]): Doc[List[A]] =
-          Doc(Many("", p.desc))
-        override def nel[A](e: String)(p: Doc[A])(implicit AF: Alternative[F]): Doc[List[A]] =
-          Doc(Many1("", p.desc))
-        override def tagged[A](t: String)(p: Doc[A]): Doc[A] =
-          p.copy(desc = Desc.tagged(t)(p.desc))
-      }
+    object Desc extends Grammar[CFGP] {
+      override def char: CFGP[Char]                  = CFGP(Input("char"))
+      override def delay[A](pa: => CFGP[A]): CFGP[A] = CFGP(Delay("", () => pa.cfg))
     }
   }
 
   "Docs" should {
     "be available for combinators" in {
-      Parsers.Docs.integer.bnf.mkString("\n", "\n", "\n") must_===
+      Parsers.Desc.integer.show.mkString("\n", "\n", "\n") must_===
         """
           |<digit> ::= <char>
           |<integer> ::= NEL(<digit>)
           |""".stripMargin
     }
     "be available for all expression" in {
-      Parsers.Docs.expression.bnf.mkString("\n", "\n", "\n") must_===
+      Parsers.Desc.expression.show.mkString("\n", "\n", "\n") must_===
         """
           |<+> ::= <char>
           |<)> ::= <char>
