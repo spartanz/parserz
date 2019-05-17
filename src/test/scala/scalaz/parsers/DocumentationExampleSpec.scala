@@ -81,7 +81,7 @@ class DocumentationExampleSpec extends Specification {
       operationExpressionEq(Add)
     )
 
-    lazy val expression: P[Expression] = "Expression" @@ case2
+    val expression: P[Expression] = "Expression" @@ case2
   }
 
   object Parsers {

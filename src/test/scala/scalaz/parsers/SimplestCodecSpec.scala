@@ -58,7 +58,7 @@ class SimplestCodecSpec extends Specification {
 
     val case1: C[Expression] = (case0 ~ (plus ~ case0).many) ∘ foldl(())(sumExpressionEq)
 
-    lazy val expression: C[Expression] = case1
+    val expression: C[Expression] = case1
   }
 
   def parse(s: String): Option[(String, Syntax.Expression)] =

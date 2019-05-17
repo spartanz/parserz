@@ -21,4 +21,19 @@ class CodecSpec extends Specification {
       success
     }
   }
+
+  "Codec.delay" should {
+    import Category._
+    import TCInstances.optionApplicativeError
+    val env = Parsing[Option, Option, Unit]()
+    import env._
+
+    "add trampoline to Codec.equiv usage" in {
+      lazy val c1: Codec[String, String] = c2
+      lazy val c2: Codec[String, String] = c1
+      // accessing `c1` via `delay` does not result in stack overflow
+      Codec.delay(c1)
+      success
+    }
+  }
 }

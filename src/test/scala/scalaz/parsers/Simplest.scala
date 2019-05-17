@@ -96,7 +96,7 @@ object Simplest {
     val case1: P[Expression] =
       (case0 /\ (plus /\ case0).many) ∘ foldl(())(sumExpressionEq)
 
-    lazy val expression: P[Expression] =
+    val expression: P[Expression] =
       case1
 
     expression
