@@ -3,6 +3,7 @@ package scalaz.parsers
 import org.specs2.mutable.Specification
 import scalaz.std.option._
 import scalaz.std.string._
+import scalaz.std.anyVal._
 
 class SimplestCodecSpec extends Specification {
 
@@ -46,9 +47,9 @@ class SimplestCodecSpec extends Specification {
       )
     )
 
-    val digit: C[Char] = char ∘ ensure(())(_.isDigit)
+    val digit: C[Char] = char ∘ ensure(_.isDigit)
 
-    val plus: C[Char] = char ∘ ensure(())(_ == '+')
+    val plus: C[Char] = char ∘ ensure(_ == '+')
 
     val integer: C[Int] = digit ∘ lift(_.toString.toInt, _.toString.head)
 

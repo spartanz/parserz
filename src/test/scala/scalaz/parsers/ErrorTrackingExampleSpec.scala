@@ -47,7 +47,7 @@ class ErrorTrackingExampleSpec extends Specification {
       override def bind[A, B](fa: Eff[A])(f: A => Eff[B]): Eff[B] = monad.bind(fa)(f)
 
       override def raiseError[A](e: String): Eff[A] =
-        EitherT(ReaderWriterState((_, i) => (List(i -> e), -\/(e), i)))
+        EitherT(ReaderWriterState((_, i) => (List(i + 1 -> e), -\/(e), i)))
 
       override def handleError[A](fa: Eff[A])(f: String => Eff[A]): Eff[A] =
         EitherT(fa.run.flatMap {
@@ -61,7 +61,7 @@ class ErrorTrackingExampleSpec extends Specification {
     implicit val writerStateFoldable: Foldable[WriterState] =
       new Foldable[WriterState] with Foldable.FromFoldr[WriterState] {
         override def foldRight[A, B](fa: WriterState[A], z: => B)(f: (A, => B) => B): B =
-          scalaz.idInstance.foldr(fa.runZero(())._2, z)(a => b => f(a, b))
+          f(fa.runZero(())._2, z)
       }
   }
 
@@ -108,12 +108,15 @@ class ErrorTrackingExampleSpec extends Specification {
     )
 
     // todo: how to get this error?
-    val integer: Codec[Int] = digit.many1("Expected at least one digit") ∘ ensure(
-      "Number is too big"
-    )(_.size <= 7) ∘ lift(
-      chars => new String(chars.toArray).toInt,
-      int => int.toString.toList
-    )
+    val integer: Codec[Int] = digit
+      .many1("Expected at least one digit")
+      .emap(ensure("Number is too big")(_.size <= 7))
+      .emap(
+        lift(
+          chars => new String(chars.toArray).toInt,
+          int => int.toString.toList
+        )
+      )
 
     val constant: Codec[Constant] = integer ∘ constantEq
 
@@ -187,34 +190,34 @@ class ErrorTrackingExampleSpec extends Specification {
     }
 
     "report errors" in {
-      lastParsingError("$") must_=== Some(0      -> "Expected: [0-9]")
-      lastParsingError("1a") must_=== Some(1     -> "Expected: [0-9], Expected: '*', Expected: '+'")
-      lastParsingError("1**2") must_=== Some(2   -> "Expected: [0-9]")
-      lastParsingError("1*2**3") must_=== Some(4 -> "Expected: [0-9]")
+      lastParsingError("$") must_=== Some(1      -> "Expected: [0-9]")
+      lastParsingError("1a") must_=== Some(2     -> "Expected: [0-9], Expected: '*', Expected: '+'")
+      lastParsingError("1**2") must_=== Some(3   -> "Expected: [0-9]")
+      lastParsingError("1*2**3") must_=== Some(5 -> "Expected: [0-9]")
     }
 
     "produce detailed log while parsing" in {
       parse("$") must_=== List(
-        0 -> "Expected: [0-9]"
+        1 -> "Expected: [0-9]"
       ) -> Left("Expected: [0-9]")
 
       parse("1a") must_=== List(
-        1 -> "Expected: [0-9]",
-        1 -> "Expected: '*'",
-        1 -> "Expected: '+'"
+        2 -> "Expected: [0-9]",
+        2 -> "Expected: '*'",
+        2 -> "Expected: '+'"
       ) -> Right("a" -> Constant(1))
 
       parse("1**2") must_=== List(
-        1 -> "Expected: [0-9]",
         2 -> "Expected: [0-9]",
-        1 -> "Expected: '+'"
+        3 -> "Expected: [0-9]",
+        2 -> "Expected: '+'"
       ) -> Right("**2" -> Constant(1))
 
       parse("1*2**3") must_=== List(
-        1 -> "Expected: [0-9]",
-        3 -> "Expected: [0-9]",
+        2 -> "Expected: [0-9]",
         4 -> "Expected: [0-9]",
-        3 -> "Expected: '+'"
+        5 -> "Expected: [0-9]",
+        4 -> "Expected: '+'"
       ) -> Right("**3" -> Operation(Constant(1), Mul, Constant(2)))
     }
 
