@@ -108,7 +108,9 @@ class ErrorTrackingExampleSpec extends Specification {
     )
 
     // todo: how to get this error?
-    val integer: Codec[Int] = digit.many1("Expected at least one digit") ∘ lift(
+    val integer: Codec[Int] = digit.many1("Expected at least one digit") ∘ ensure(
+      "Number is too big"
+    )(_.size <= 7) ∘ lift(
       chars => new String(chars.toArray).toInt,
       int => int.toString.toList
     )
@@ -142,7 +144,7 @@ class ErrorTrackingExampleSpec extends Specification {
     parse(s)._2
 
   def lastParsingError(s: String): Option[Int /\ String] =
-    Option(parse(s)._1.distinct.groupBy(_._1).maxBy(_._1))
+    Option(parse(s)._1.groupBy(_._1).maxBy(_._1))
       .map { case (p, es) => p -> es.map(_._2).mkString(", ") }
 
   def print(e: Syntax.Expression): String \/ String =
@@ -156,6 +158,9 @@ class ErrorTrackingExampleSpec extends Specification {
     }
     "parse a digit into a literal" in {
       parsingResult("5") must_=== Right("" -> Constant(5))
+    }
+    "not parse number bigger than max" in {
+      parsingResult(List.fill(100)('5').mkString) must_=== Left("Number is too big")
     }
     "parse several digits" in {
       parsingResult("567") must_=== Right("" -> Constant(567))
@@ -207,8 +212,6 @@ class ErrorTrackingExampleSpec extends Specification {
 
       parse("1*2**3") must_=== List(
         1 -> "Expected: [0-9]",
-        3 -> "Expected: [0-9]",
-        4 -> "Expected: [0-9]",
         3 -> "Expected: [0-9]",
         4 -> "Expected: [0-9]",
         3 -> "Expected: '+'"
