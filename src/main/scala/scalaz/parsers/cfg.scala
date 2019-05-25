@@ -41,26 +41,30 @@ object cfg {
   case class CFGP[A](cfg: CFG) {
 
     def show: List[String] =
-      CFGP.show(Nil)(List(cfg)).collect { case (n, v) if n.nonEmpty => s"<$n>$v" }.distinct
+      CFGP.show(Nil)(List(cfg)).collect { case (n, v) if n.nonEmpty => s"<$n>$v" }
   }
 
   object CFGP {
 
     def parserOps[F[_], G[_], E](P: Parsing[F, G, E]): P.ParserOps[CFGP] =
       new P.ParserOps[CFGP] {
-        override def zip[A, B](p1: CFGP[A], p2: CFGP[B]): CFGP[A /\ B] =
+
+        def zip[A, B](p1: CFGP[A], p2: CFGP[B]): CFGP[A /\ B] =
           CFGP(Seq("", List(p1.cfg, p2.cfg)))
-        override def alt[A, B](p1: CFGP[A], p2: CFGP[B])(
-          implicit AF: Alternative[F]
-        ): CFGP[A \/ B] =
+
+        def alt[A, B](p1: CFGP[A], p2: => CFGP[B])(implicit AF: Alternative[F]): CFGP[A \/ B] =
           CFGP(Alt("", List(p1.cfg, p2.cfg)))
-        override def map[A, B](p: CFGP[A])(equiv: P.Equiv[A, B]): CFGP[B] =
+
+        def map[A, B](p: CFGP[A])(equiv: P.Equiv[A, B]): CFGP[B] =
           CFGP(Mapped("", p.cfg))
-        override def list[A](p: CFGP[A])(implicit AF: Alternative[F]): CFGP[List[A]] =
+
+        def list[A](p: CFGP[A])(implicit AF: Alternative[F]): CFGP[List[A]] =
           CFGP(Many("", p.cfg))
-        override def nel[A](e: E)(p: CFGP[A])(implicit AF: Alternative[F]): CFGP[List[A]] =
+
+        def nel[A](e: E)(p: CFGP[A])(implicit AF: Alternative[F]): CFGP[List[A]] =
           CFGP(Many1("", p.cfg))
-        override def tagged[A](t: String)(p: CFGP[A]): CFGP[A] =
+
+        def tagged[A](t: String)(p: CFGP[A]): CFGP[A] =
           p.copy(cfg = CFG.tagged(t)(p.cfg))
       }
 

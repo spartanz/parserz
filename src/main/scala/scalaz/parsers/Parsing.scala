@@ -71,6 +71,12 @@ sealed trait Parsing[F[_], G[_], E] {
         b => if (p(b)) G.pure(b) else G.raiseError(e)
       )
 
+    def ensure[A](p: A => Boolean)(implicit E: Monoid[E]): Equiv[A, A] =
+      liftF(
+        a => if (p(a)) F.pure(a) else F.raiseError(E.zero),
+        b => if (p(b)) G.pure(b) else G.raiseError(E.zero)
+      )
+
     def liftPartial[A, B](e: E)(ab: PartialFunction[A, B], ba: PartialFunction[B, A]): Equiv[A, B] =
       liftF(
         a => ab.lift(a).fold[F[B]](F.raiseError(e))(F.pure(_)),
@@ -223,7 +229,7 @@ sealed trait Parsing[F[_], G[_], E] {
 
   trait ParserOps[P[_]] { self =>
     def zip[A, B](p1: P[A], p2: P[B]): P[A /\ B]
-    def alt[A, B](p1: P[A], p2: P[B])(implicit AF: Alternative[F]): P[A \/ B]
+    def alt[A, B](p1: P[A], p2: => P[B])(implicit AF: Alternative[F]): P[A \/ B]
     def map[A, B](p: P[A])(equiv: Equiv[A, B]): P[B]
     def list[A](p: P[A])(implicit AF: Alternative[F]): P[List[A]]
     // todo: return P[NonEmptyList[A]]
@@ -234,17 +240,31 @@ sealed trait Parsing[F[_], G[_], E] {
   }
 
   trait ParserSyntax {
-    implicit final class ToParserOps1[P[_], A](self: P[A]) {
-      def ~ [B](that: P[B])(implicit P: ParserOps[P]): P[(A, B)] = P.zip(self, that)
+    implicit final class ToParserOps1[P[_], A](p1: P[A]) {
 
-      def | [B](that: P[B])(implicit P: ParserOps[P], AF: Alternative[F]): P[A \/ B] =
-        P.alt(self, that)
-      def ∘ [B](equiv: Equiv[A, B])(implicit P: ParserOps[P]): P[B]             = P.map(self)(equiv)
-      def many(implicit P: ParserOps[P], AF: Alternative[F]): P[List[A]]        = P.list(self)
-      def many1(e: E)(implicit P: ParserOps[P], AF: Alternative[F]): P[List[A]] = P.nel(e)(self)
+      def ~ [B](p2: P[B])(implicit P: ParserOps[P]): P[(A, B)] =
+        P.zip(p1, p2)
+
+      def | [B](p2: => P[B])(implicit P: ParserOps[P], AF: Alternative[F]): P[A \/ B] =
+        P.alt(p1, p2)
+
+      def ∘ [B](eq: Equiv[A, B])(implicit P: ParserOps[P]): P[B] =
+        P.map(p1)(eq)
+
+      def emap[B](eq: Equiv[A, B])(implicit P: ParserOps[P]): P[B] =
+        P.map(p1)(eq)
+
+      def many(implicit P: ParserOps[P], AF: Alternative[F]): P[List[A]] =
+        P.list(p1)
+
+      def many1(e: E)(implicit P: ParserOps[P], AF: Alternative[F]): P[List[A]] =
+        P.nel(e)(p1)
     }
+
     implicit final class ToParserOps2(self: String) {
-      def @@ [P[_], A](p: P[A])(implicit P: ParserOps[P]): P[A] = P.tagged(self)(p)
+
+      def @@ [P[_], A](p: P[A])(implicit P: ParserOps[P]): P[A] =
+        P.tagged(self)(p)
     }
   }
 
@@ -291,7 +311,7 @@ sealed trait Parsing[F[_], G[_], E] {
         )
 
       // Alternative functionality
-      override def alt[A, B](p1: Codec[I, A], p2: Codec[I, B])(
+      override def alt[A, B](p1: Codec[I, A], p2: => Codec[I, B])(
         implicit AF: Alternative[F]
       ): Codec[I, A \/ B] =
         apply(

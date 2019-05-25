@@ -77,14 +77,15 @@ class DocumentationExampleSpec extends Specification {
 
     val constExpr: P[Expression] = "Constant" @@ (constant ∘ constantExpressionEq)
 
-    val multiplier
-      : P[Expression] = "Multiplier" @@ ((paren1 ~ addition ~ paren2) | constExpr) ∘ lift({
-      case Left(((_, exp), _)) => SubExpr(exp)
-      case Right(exp)          => exp
-    }, {
-      case SubExpr(exp) => Left((('(', exp), ')'))
-      case exp          => Right(exp)
-    })
+    val multiplier: P[Expression] = "Multiplier" @@ (
+      ((paren1 ~ addition ~ paren2) | constExpr) ∘ lift({
+        case Left(((_, exp), _)) => SubExpr(exp)
+        case Right(exp)          => exp
+      }, {
+        case SubExpr(exp) => Left((('(', exp), ')'))
+        case exp          => Right(exp)
+      })
+    )
 
     // todo: how to get this error?
     val multiplication: P[Expression] = "Multiplication" @@ (

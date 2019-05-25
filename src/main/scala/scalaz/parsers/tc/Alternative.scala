@@ -1,7 +1,6 @@
 package scalaz.parsers.tc
 
-import scalaz.{ -\/, EitherT, Monad, \/- }
-import scalaz.syntax.monad._
+import scalaz.{ EitherT, Monad }
 
 trait Alternative[F[_]] {
   def or[A](f1: F[A], f2: => F[A]): F[A]
@@ -27,9 +26,6 @@ object Alternative {
   implicit def eitherTAlternative[F[_]: Monad, L]: Alternative[EitherT[L, F, ?]] =
     new Alternative[EitherT[L, F, ?]] {
       override def or[A](f1: EitherT[L, F, A], f2: => EitherT[L, F, A]): EitherT[L, F, A] =
-        EitherT(f1.run.flatMap {
-          case -\/(_) => f2.run
-          case \/-(_) => f1.run
-        })
+        f1.orElse(f2)
     }
 }
