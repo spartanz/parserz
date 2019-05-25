@@ -1,7 +1,7 @@
 package scalaz.parsers
 
 import org.specs2.mutable.Specification
-import scalaz.parsers.tc.{ Alternative, Category }
+import scalaz.parsers.tc.Category
 import scalaz.std.either._
 
 class DocumentationExampleSpec extends Specification {
@@ -10,6 +10,7 @@ class DocumentationExampleSpec extends Specification {
     sealed trait Expression
     case class Constant(value: Int)                                    extends Expression
     case class Operation(e1: Expression, op: Operator, e2: Expression) extends Expression
+    case class SubExpr(e: Expression)                                  extends Expression
 
     sealed trait Operator
     case object Add extends Operator
@@ -21,6 +22,7 @@ class DocumentationExampleSpec extends Specification {
 
     val parsing: Parsing[Either[String, ?], Either[String, ?], String] = Parsing()
     val equiv: parsing.Equiv.type                                      = parsing.Equiv
+    val codec: parsing.Codec.type                                      = parsing.Codec
     val syntax: parsing.syntax.type                                    = parsing.syntax
 
     type Equiv[A, B] = parsing.Equiv[A, B]
@@ -51,8 +53,11 @@ class DocumentationExampleSpec extends Specification {
       )
 
     def char: P[Char]
+    def delay[A](pa: => P[A]): P[A]
 
-    val digit: P[Char] = "digit" @@ (char ∘ ensure("Expected: [0-9]")(_.isDigit))
+    val digit: P[Char]  = "digit" @@ (char ∘ ensure("Expected: [0-9]")(_.isDigit))
+    val paren1: P[Char] = "(" @@ (char ∘ ensure("expected: open paren")(_ == '('))
+    val paren2: P[Char] = ")" @@ (char ∘ ensure("expected: close paren")(_ == ')'))
 
     val plus: P[Operator] = "+" @@ (char ∘ liftPartial("Expected: '+'")(
       { case '+' => Add }, { case Add => '+' }
@@ -70,22 +75,36 @@ class DocumentationExampleSpec extends Specification {
 
     val constant: P[Constant] = integer ∘ constantEq
 
-    val case0: P[Expression] = "Constant" @@ (constant ∘ constantExpressionEq)
+    val constExpr: P[Expression] = "Constant" @@ (constant ∘ constantExpressionEq)
+
+    val multiplier
+      : P[Expression] = "Multiplier" @@ ((paren1 ~ addition ~ paren2) | constExpr) ∘ lift({
+      case Left(((_, exp), _)) => SubExpr(exp)
+      case Right(exp)          => exp
+    }, {
+      case SubExpr(exp) => Left((('(', exp), ')'))
+      case exp          => Right(exp)
+    })
 
     // todo: how to get this error?
-    val case1: P[Expression] = (case0 ~ (star ~ case0).many) ∘ foldl("hm...")(
-      operationExpressionEq(Mul)
+    val multiplication: P[Expression] = "Multiplication" @@ (
+      (constExpr ~ (star ~ multiplier).many) ∘ foldl("hm...")(
+        operationExpressionEq(Mul)
+      )
     )
 
-    val case2: P[Expression] = (case1 ~ (plus ~ case1).many) ∘ foldl("hmm..")(
-      operationExpressionEq(Add)
-    )
+    lazy val addition: P[Expression] = "Addition" @@ delay {
+      (multiplication ~ (plus ~ multiplication).many) ∘ foldl("hmm..")(
+        operationExpressionEq(Add)
+      )
+    }
 
-    val expression: P[Expression] = "Expression" @@ case2
+    lazy val expression: P[Expression] = "Expression" @@ addition
   }
 
   object Parsers {
     import env.equiv
+    import env.codec
     import env.parsing.Codec
     import env.parsing.Codec._
 
@@ -96,116 +115,43 @@ class DocumentationExampleSpec extends Specification {
           { case (cs, c) => Right(cs :+ c) }
         )
       )
+
+      override def delay[A](pa: => Codec[List[Char], A]): Codec[List[Char], A] =
+        codec.delay(pa)
     }
 
-    sealed trait Desc
-    case class Input(name: String)                 extends Desc
-    case class Mapped(name: String, desc: Desc)    extends Desc
-    case class Seq(name: String, desc: List[Desc]) extends Desc
-    case class Alt(name: String, desc: List[Desc]) extends Desc
-    case class Many(name: String, desc: Desc)      extends Desc
-    case class Many1(name: String, desc: Desc)     extends Desc
+    import cfg._
 
-    object Desc {
+    implicit private val descOps: env.parsing.ParserOps[CFGP] = CFGP.parserOps(env.parsing)
 
-      def name: Desc => String = {
-        case Input(name)     => name
-        case Mapped(name, _) => name
-        case Seq(name, _)    => name
-        case Alt(name, _)    => name
-        case Many(name, _)   => name
-        case Many1(name, _)  => name
-      }
-
-      def named(n: String): Desc => Desc = {
-        case d @ Input(_)     => d.copy(name = n)
-        case d @ Mapped(_, _) => d.copy(name = n)
-        case d @ Seq(_, _)    => d.copy(name = n)
-        case d @ Alt(_, _)    => d.copy(name = n)
-        case d @ Many(_, _)   => d.copy(name = n)
-        case d @ Many1(_, _)  => d.copy(name = n)
-      }
-
-      def show(desc: Desc): String = {
-        val name = Desc.name(desc)
-        if (name.nonEmpty) s"<$name>"
-        else
-          desc match {
-            case Input(_)     => ""
-            case Mapped(_, d) => show(d)
-            case Seq(_, ds)   => ds.map(show).mkString(" ")
-            case Alt(_, ds)   => ds.map(show).mkString("(", " | ", ")")
-            case Many(_, d)   => "List(" + show(d) + ")"
-            case Many1(_, d)  => "NEL(" + show(d) + ")"
-          }
-      }
-    }
-
-    import env.parsing.Equiv
-    import env.parsing.ParserOps
-
-    object Docs extends Grammar[Doc] {
-      override def char: Doc[Char] = Doc(Input("char"))
-    }
-
-    case class Doc[A](desc: Desc) {
-
-      def bnf: List[String] =
-        Doc.bnf(Nil)(List(desc)).collect { case (n, v) if n.nonEmpty => s"<$n>$v" }.distinct
-    }
-
-    object Doc {
-
-      def bnf(z: List[String -> String])(desc: List[Desc]): List[String -> String] =
-        desc.foldLeft(z)(
-          (acc, dd) =>
-            (dd match {
-              case Input(_)        => Nil
-              case Mapped(name, d) => bnf(List(name -> (" ::= " + Desc.show(d))))(List(d))
-              case Seq(name, ds) =>
-                bnf(List(name -> (" ::= " + ds.map(Desc.show).mkString(" "))))(ds)
-              case Alt(name, ds) =>
-                bnf(List(name -> (" ::= " + ds.map(Desc.show).mkString("(", " | ", ")"))))(ds)
-              case Many(name, d)  => bnf(List(name -> (" ::= List(" + Desc.show(d) + ")")))(List(d))
-              case Many1(name, d) => bnf(List(name -> (" ::= NEL(" + Desc.show(d) + ")")))(List(d))
-            }) ::: acc
-        )
-
-      implicit def parserOps[I]: ParserOps[Doc] = new ParserOps[Doc] {
-        type F[A] = Either[String, A]
-        override def zip[A, B](p1: Doc[A], p2: Doc[B]): Doc[A /\ B] =
-          Doc(Seq("", List(p1.desc, p2.desc)))
-        override def alt[A, B](p1: Doc[A], p2: Doc[B])(implicit AF: Alternative[F]): Doc[A \/ B] =
-          Doc(Alt("", List(p1.desc, p2.desc)))
-        override def map[A, B](p: Doc[A])(equiv: Equiv[A, B]): Doc[B] =
-          Doc(Mapped("", p.desc))
-        override def list[A](p: Doc[A])(implicit AF: Alternative[F]): Doc[List[A]] =
-          Doc(Many("", p.desc))
-        override def nel[A](e: String)(p: Doc[A])(implicit AF: Alternative[F]): Doc[List[A]] =
-          Doc(Many1("", p.desc))
-        override def tagged[A](t: String)(p: Doc[A]): Doc[A] =
-          p.copy(desc = Desc.named(t)(p.desc))
-      }
+    object Desc extends Grammar[CFGP] {
+      override def char: CFGP[Char]                  = CFGP(Input("char"))
+      override def delay[A](pa: => CFGP[A]): CFGP[A] = CFGP(Delay("", () => pa.cfg))
     }
   }
 
   "Docs" should {
     "be available for combinators" in {
-      Parsers.Docs.integer.bnf.mkString("\n", "\n", "\n") must_===
+      Parsers.Desc.integer.show.mkString("\n", "\n", "\n") must_===
         """
           |<digit> ::= <char>
           |<integer> ::= NEL(<digit>)
           |""".stripMargin
     }
     "be available for all expression" in {
-      Parsers.Docs.expression.bnf.mkString("\n", "\n", "\n") must_===
+      Parsers.Desc.expression.show.mkString("\n", "\n", "\n") must_===
         """
+          |<+> ::= <char>
+          |<)> ::= <char>
+          |<Addition> ::= <Multiplication> List(<+> <Multiplication>)
+          |<(> ::= <char>
+          |<Multiplier> ::= (<(> <Addition> <)> | <Constant>)
+          |<*> ::= <char>
           |<digit> ::= <char>
           |<integer> ::= NEL(<digit>)
           |<Constant> ::= <integer>
-          |<*> ::= <char>
-          |<+> ::= <char>
-          |<Expression> ::= <Constant> List(<*> <Constant>) List(<+> <Constant> List(<*> <Constant>))
+          |<Multiplication> ::= <Constant> List(<*> <Multiplier>)
+          |<Expression> ::= <Multiplication> List(<+> <Multiplication>)
           |""".stripMargin
     }
   }
@@ -268,6 +214,25 @@ class DocumentationExampleSpec extends Specification {
           Operation(Constant(1), Mul, Constant(2)),
           Add,
           Operation(Constant(3), Mul, Constant(4))
+        )
+      )
+    }
+
+    "parse expressions with precedence" in {
+      parse("12*(34+56)") must_=== Right(
+        "" -> Operation(Constant(12), Mul, SubExpr(Operation(Constant(34), Add, Constant(56))))
+      )
+      parse("2*(3+4*5)") must_=== Right(
+        "" -> Operation(
+          Constant(2),
+          Mul,
+          SubExpr(
+            Operation(
+              Constant(3),
+              Add,
+              Operation(Constant(4), Mul, Constant(5))
+            )
+          )
         )
       )
     }
