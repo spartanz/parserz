@@ -1,7 +1,7 @@
 package scalaz.parsers
 
 import scalaz.parsers.tc.{ Alternative, Category }
-import scalaz.{ ApplicativeError, Foldable, MonadError, Monoid, ~> }
+import scalaz.{ Applicative, ApplicativeError, Cofree, Foldable, MonadError, Monoid, PlusEmpty, ~> }
 
 object Parsing {
 
@@ -41,6 +41,20 @@ sealed trait Parsing[F[_], G[_], E] {
     def from: B => G[A]
   }
 
+  type ↻[R[_], B] = Cofree[Option, R[B]]
+
+  sealed trait Recurse[R[_], B] extends Equiv[↻[R, B], B]
+
+  object Recurse {
+    import syntax._
+
+    def apply[R[_], B](rb: ↻[R, B] => F[B], br: B => G[↻[R, B]]): Recurse[R, B] =
+      new Recurse[R, B] {
+        override def to: ↻[R, B] => F[B]   = rb
+        override def from: B => G[↻[R, B]] = br
+      }
+  }
+
   object Equiv {
     import syntax._
 
@@ -53,7 +67,7 @@ sealed trait Parsing[F[_], G[_], E] {
     def lift[A, B](ab: A => B, ba: B => A): Equiv[A, B] =
       id[A].imap(ab, ba)
 
-    def liftF[A, B](ab: A => F[B], ba: B => G[A]): Equiv[A, B] =
+    def liftFG[A, B](ab: A => F[B], ba: B => G[A]): Equiv[A, B] =
       Equiv(ab, ba)
 
     def id[A]: Equiv[A, A] =
@@ -66,13 +80,13 @@ sealed trait Parsing[F[_], G[_], E] {
       lift(_ => a, _ => ())
 
     def ensure[A](e: E)(p: A => Boolean): Equiv[A, A] =
-      liftF(
+      liftFG(
         a => if (p(a)) F.pure(a) else F.raiseError(e),
         b => if (p(b)) G.pure(b) else G.raiseError(e)
       )
 
     def liftPartial[A, B](e: E)(ab: PartialFunction[A, B], ba: PartialFunction[B, A]): Equiv[A, B] =
-      liftF(
+      liftFG(
         a => ab.lift(a).fold[F[B]](F.raiseError(e))(F.pure(_)),
         b => ba.lift(b).fold[G[A]](G.raiseError(e))(G.pure(_))
       )
@@ -80,7 +94,7 @@ sealed trait Parsing[F[_], G[_], E] {
     def liftPartialF[A, B](
       e: E
     )(ab: PartialFunction[A, F[B]], ba: PartialFunction[B, G[A]]): Equiv[A, B] =
-      liftF(
+      liftFG(
         a => ab.lift(a).getOrElse(F.raiseError(e)),
         b => ba.lift(b).getOrElse(G.raiseError(e))
       )
@@ -98,13 +112,43 @@ sealed trait Parsing[F[_], G[_], E] {
         { case x :: xs => (x, xs) }
       )
 
+    /**
+    def cofreeUnit[S[_], A](implicit S: PlusEmpty[S]): Equiv[Unit, S[Cofree[S, A]]] = lift(
+      { case () => S.empty[Cofree[S, A]] },
+      { case _  => () }
+    )
+
+    def cofreeNormUnit[S[_], A](implicit S: PlusEmpty[S]): Equiv[Unit, Unit \/ Cofree[S, A]] = lift(
+      { case () => Left(Unit) },
+      { case _  => () }
+    )
+
+    def cofree[S[_], A]: Equiv[A /\ S[Cofree[S, A]], Cofree[S, A]] =
+      lift(
+        { case (a, s) => Cofree(a, s) }, {
+          case c      => c.head -> c.tail
+        }
+      )
+
+    def cofreeNorm[S[_], A](a: A)(
+      implicit S: PlusEmpty[S],
+      SA: Applicative[S]
+    ): Equiv[A /\ S[Cofree[S, A]], Unit \/ Cofree[S, A]] =
+      lift(
+        { case (a, s)   => Right(Cofree(a, s)) }, {
+          case Left(_)  => a -> S.empty[Cofree[S, A]]
+          case Right(c) => a -> SA.point(c)
+        }
+      )
+    **/
+
     def list[A]: Equiv[A /\ List[A] \/ Unit, List[A]] = lift(
       {
         case Right(_)      => Nil
         case Left((a, as)) => a :: as
       }, {
         case Nil     => Right(())
-        case a :: as => Left((a, as))
+        case a :: as => Left(a -> as)
       }
     )
 
@@ -115,12 +159,44 @@ sealed trait Parsing[F[_], G[_], E] {
       lift(step(equiv.to, _), step(equiv.from, _))
     }
 
+    /**
+    def iterateK[S[_, _], T[_, _], A, B](
+      equiv: Equiv[S[A, B], T[A, B]]
+    )(implicit F0: Foldable[F], G0: Foldable[G]): Equiv[S[A, B], T[A, B]] = {
+      def step[L[_]](f: S[A, B] => L[S[A, B]], state: S[A, B])(implicit L: Foldable[L]): T[A, B] =
+        L.foldLeft(f(state), state) { case (_, s) => step(f, s) }
+
+      lift(step(equiv.to, _), step(equiv.from, _))
+    }
+    **/
+    /**
+    def foldcf[S[_]: PlusEmpty, A, B](b: B, equiv: Equiv[A /\ B, A])(f: S ↻ B)(
+      implicit F0: Foldable[F],
+      G0: Foldable[G],
+      FG: F ~> G,
+      GF: G ~> F,
+      SA: Applicative[S]
+    ): Equiv[A /\ S[Cofree[S, B]], A] = {
+      import Product._
+
+      def step: Equiv[A ⓧ (Unit \/ Cofree[S, B]), A ⓧ S[Cofree[S, B]]] = {
+        val first: Equiv[A ⓧ (Unit \/ Cofree[S, B]), A ⓧ (B ⓧ S[Cofree[S, B]])] =
+          cofreeNorm[S, B](b).reverse.second[A]
+        val app: Equiv[A ⓧ B ⓧ S[Cofree[S, B]], A ⓧ S[Cofree[S, B]]] = equiv.first
+
+        first >>> associate >>> app
+      }
+
+      iterate(step) >>> cofreeNormUnit[S, B].second[A].reverse >>> unitR[A].reverse
+    }
+    **/
+// (A /\ B) <=> (A /\ B, A)
     def foldl[A, B](e: E)(equiv: Equiv[A /\ B, A])(
       implicit F0: Foldable[F],
       G0: Foldable[G],
       FG: F ~> G,
       GF: G ~> F
-    ): Equiv[A /\ List[B], A] = {
+    ): Equiv[A /\ List[B], A] = { // Return type:  Separated1
       import Product._
       def step: Equiv[A ⓧ List[B], A ⓧ List[B]] = {
         val first: Equiv[A ⓧ List[B], A ⓧ (B ⓧ List[B])] = nel[B](e).reverse.second

@@ -101,7 +101,7 @@ class ParserSyntaxSpec extends Specification {
 
   "combinators" >> {
     def eq(c: Char): Char => Option[Char]      = Some(_).filter(_ == c)
-    def is(c: Char): parsing.Equiv[Char, Char] = parsing.Equiv.liftF(eq(c), eq(c))
+    def is(c: Char): parsing.Equiv[Char, Char] = parsing.Equiv.liftFG(eq(c), eq(c))
 
     "and (product)" in {
       (char /\ char).apply("a") must_=== (""  -> List())

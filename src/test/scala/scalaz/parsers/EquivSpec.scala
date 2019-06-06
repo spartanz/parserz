@@ -27,7 +27,7 @@ class EquivSpec extends Specification {
 
     "lift" in {
       verify(lift[Int, Int](_ + 1, _ - 1), 3, 4)
-      verify(liftF[Int, Int](a => Some(a + 1), b => Some(b - 1)), 3, 4)
+      verify(liftFG[Int, Int](a => Some(a + 1), b => Some(b - 1)), 3, 4)
     }
 
     "id" in {
@@ -106,7 +106,7 @@ class EquivSpec extends Specification {
     "lift" in {
       val equiv1: Equiv[Unit, Int] = create(5)
       verify(equiv1 >>> lift[Int, Int](_ + 1, _ - 1), (), 6)
-      verify(equiv1 >>> liftF[Int, Int](a => Some(a + 1), b => Some(b - 1)), (), 6)
+      verify(equiv1 >>> liftFG[Int, Int](a => Some(a + 1), b => Some(b - 1)), (), 6)
     }
 
     "unit" in {
@@ -152,7 +152,7 @@ class EquivSpec extends Specification {
     }
 
     "iterate" in {
-      val iterator: Equiv[Int, Int] = liftF(
+      val iterator: Equiv[Int, Int] = liftFG(
         a => Some(a + 1).filter(_ <= 5),
         b => Some(b - 1).filter(_ >= 0)
       )

@@ -1,6 +1,7 @@
 package scalaz.parsers
 
 import org.specs2.mutable.Specification
+import scalaz.Cofree
 import scalaz.parsers.tc.Category
 import scalaz.std.either._
 import scalaz.std.string._
@@ -44,10 +45,25 @@ class ClassicExampleSpec extends Specification {
         { case Operation(e1, `op`, e2) => e1 -> (op -> e2) }
       )
 
+    def operationExpressionEq2(
+      op: Operator
+    ): parsing.Recurse[Expression /\ (Operator /\ Expression), Expression] = {
+      def cof(c: parsing.↻[Expression /\ (Operator /\ Expression), Expression]) : Operation =
+        c match {
+          case Cofree((e1, (`op`, e2)), Some(x)) => Cofree(Operation(e1, op, e2), Some(cof(x)))
+          case Cofree((e1, (`op`, e2)), None) => Operation(e1, op, e2)
+        }
+
+      lift[parsing.↻[Expression /\ (Operator /\ Expression), Expression], Expression](
+        { case c => cof(c) },
+        { case Operation(e1, `op`, e2) => e1 -> (op -> e2) }
+      )
+    }
+
     type Codec[A] = parsing.Codec[String, A]
 
     val char: Codec[Char] = parsing.Codec(
-      liftF(
+      liftFG(
         s =>
           s.headOption
             .fold[Either[String, Char]](Left("Empty input"))(Right(_))
@@ -77,9 +93,9 @@ class ClassicExampleSpec extends Specification {
 
     val case0: Codec[Expression] = constant ∘ constantExpressionEq
 
-    val case1: Codec[Expression] = (case0 ~ (star ~ case0).many) ∘ foldl("hm...")(
+    val case1: Codec[Expression] = (case0 ~ (star ~ case0).many) ∘ foldcf(
       operationExpressionEq(Mul)
-    )
+    )()
 
     val case2: Codec[Expression] = (case1 ~ (plus ~ case1).many) ∘ foldl("hmm..")(
       operationExpressionEq(Add)

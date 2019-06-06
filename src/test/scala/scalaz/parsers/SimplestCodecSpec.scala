@@ -38,7 +38,7 @@ class SimplestCodecSpec extends Specification {
     type C[A] = Codec[String, A]
 
     val char: C[Char] = Codec(
-      liftF(
+      liftFG(
         s => s.headOption.map(s.drop(1) -> _),
         { case (s, c) => Some(s + c) }
       )
