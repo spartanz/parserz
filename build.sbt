@@ -20,8 +20,8 @@ lazy val root =
         "https://oss.sonatype.org/content/repositories/staging"
       ),
       libraryDependencies ++= Seq(
-        "org.scalaz" %% "scalaz-core" % "7.3.0-M28",
-        "org.specs2" %% "specs2-core" % "4.3.5" % Test
+        "org.scalaz" %% "scalaz-core" % "7.3.0-M30",
+        "org.specs2" %% "specs2-core" % "4.5.1" % Test
       )
     )
     .enablePlugins(BuildInfoPlugin)

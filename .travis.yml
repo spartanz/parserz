@@ -1,6 +1,7 @@
 language: scala
 sudo: false
 scala:
+  - 2.13.0
   - 2.12.7
 #  - 2.11.12
 jdk:
@@ -8,7 +9,7 @@ jdk:
 before_install:
   - export PATH=${PATH}:./vendor/bundle
 script:
-  - sbt ++$TRAVIS_SCALA_VERSION clean scalafmtSbtCheck scalafmtCheck test:scalafmtCheck coverage test coverageReport
+  - sbt "++${TRAVIS_SCALA_VERSION}!" clean scalafmtSbtCheck scalafmtCheck test:scalafmtCheck coverage test coverageReport
   - if [ "$TRAVIS_PULL_REQUEST" = "false" ]; then sbt publish; fi
 after_success:
   - bash <(curl -s https://codecov.io/bash)
