@@ -3,7 +3,7 @@ addCommandAlias("check", "all scalafmtSbtCheck scalafmtCheck test:scalafmtCheck"
 
 inThisBuild(
   List(
-    organization := "io.github.spartanz",
+    organization := "org.spartanz",
     homepage := Some(url("https://github.com/spartanz/parserz")),
     licenses := List("Apache-2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0")),
     developers := List()
