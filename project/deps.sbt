@@ -1,1 +1,1 @@
-dependsOn(RootProject(uri("git:https://github.com/scalaz/scalaz-sbt.git")))
+dependsOn(RootProject(uri("git:https://github.com/spartanz/sbt-org-policies.git")))
