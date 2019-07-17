@@ -6,6 +6,12 @@ inThisBuild(
     organization := "org.spartanz",
     homepage := Some(url("https://github.com/spartanz/parserz")),
     licenses := List("Apache-2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0")),
+    scmInfo := Some(
+      ScmInfo(
+        url("https://github.com/spartanz/parserz"),
+        "scm:git:https://github.com/spartanz/parserz.git"
+      )
+    ),
     developers := List()
   )
 )
