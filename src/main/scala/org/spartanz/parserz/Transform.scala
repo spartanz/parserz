@@ -1,8 +1,8 @@
-package scalaz.parsers
+package org.spartanz.parserz
 
 import scalaz.{ Applicative, Monad, Strong }
-import scalaz.parsers.tc.Category
-import scalaz.parsers.syntax.category._
+import org.spartanz.parserz.tc.Category
+import org.spartanz.parserz.syntax.category._
 
 trait Transform[=>:[_, _]] extends Strong[=>:] with Category[=>:] { self =>
 

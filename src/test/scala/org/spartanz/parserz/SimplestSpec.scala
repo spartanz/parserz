@@ -1,8 +1,8 @@
-package scalaz.parsers
+package org.spartanz.parserz
 
 import org.specs2.mutable.Specification
-import scalaz.parsers.Simplest.{ Parser, Printer }
-import scalaz.parsers.Simplest.Syntax._
+import org.spartanz.parserz.Simplest.{ Parser, Printer }
+import org.spartanz.parserz.Simplest.Syntax._
 
 class SimplestSpec extends Specification {
 

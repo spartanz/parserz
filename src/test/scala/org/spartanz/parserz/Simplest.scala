@@ -1,8 +1,8 @@
-package scalaz.parsers
+package org.spartanz.parserz
 
 import scalaz.Zip
-import scalaz.parsers.syntax.ParserSyntax
-import scalaz.parsers.tc.Alternative
+import org.spartanz.parserz.syntax.ParserSyntax
+import org.spartanz.parserz.tc.Alternative
 import scalaz.std.option._
 
 object Simplest {

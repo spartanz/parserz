@@ -1,6 +1,6 @@
-package scalaz
+package org.spartanz
 
-package object parsers {
+package object parserz {
 
   type ->[A, B] = (A, B)
   type /\[A, B] = (A, B)

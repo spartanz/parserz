@@ -1,8 +1,8 @@
-package scalaz.parsers
+package org.spartanz.parserz
 
 import org.specs2.mutable.Specification
 import scalaz.MonadError
-import scalaz.parsers.tc.Category
+import org.spartanz.parserz.tc.Category
 import scalaz.std.option._
 
 class CodecSpec extends Specification {

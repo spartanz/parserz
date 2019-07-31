@@ -1,6 +1,6 @@
-package scalaz.parsers
+package org.spartanz.parserz
 
-import scalaz.parsers.tc.{ Alternative, Category }
+import org.spartanz.parserz.tc.{ Alternative, Category }
 import scalaz.{ ApplicativeError, Foldable, MonadError, Monoid, ~> }
 
 object Parsing {

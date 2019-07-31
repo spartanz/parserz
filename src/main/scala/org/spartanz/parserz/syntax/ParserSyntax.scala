@@ -1,8 +1,8 @@
-package scalaz.parsers.syntax
+package org.spartanz.parserz.syntax
 
 import scalaz.Zip
-import scalaz.parsers._
-import scalaz.parsers.tc.Alternative
+import org.spartanz.parserz._
+import org.spartanz.parserz.tc.Alternative
 
 trait ParserSyntax[P[_], F[_], G[_], E] {
 

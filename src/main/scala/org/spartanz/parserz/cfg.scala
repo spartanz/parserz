@@ -1,6 +1,6 @@
-package scalaz.parsers
+package org.spartanz.parserz
 
-import scalaz.parsers.tc.Alternative
+import org.spartanz.parserz.tc.Alternative
 
 import scala.collection.mutable
 

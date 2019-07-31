@@ -1,10 +1,10 @@
-package scalaz.parsers
+package org.spartanz.parserz
 
 import org.specs2.mutable.Specification
 import scalaz.Zip
-import scalaz.parsers.syntax.ParserSyntax
-import scalaz.parsers.tc.Alternative
-import scalaz.parsers.tc.Category._
+import org.spartanz.parserz.syntax.ParserSyntax
+import org.spartanz.parserz.tc.Alternative
+import org.spartanz.parserz.tc.Category._
 import scalaz.std.option._
 
 class ParserSyntaxSpec extends Specification {

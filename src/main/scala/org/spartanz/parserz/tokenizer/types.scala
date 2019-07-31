@@ -1,4 +1,4 @@
-package scalaz.parsers.tokenizer
+package org.spartanz.parserz.tokenizer
 
 object types {
   type t[S, F[_, _], E, G[_], T] = S => F[E, G[T]]

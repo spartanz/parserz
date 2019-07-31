@@ -1,4 +1,4 @@
-package scalaz.parsers.tc
+package org.spartanz.parserz.tc
 
 import scalaz.Monad
 

@@ -1,4 +1,4 @@
-package scalaz.parsers
+package org.spartanz.parserz
 
 import scalaz.{ ApplicativeError, Monad, MonadError, ~> }
 

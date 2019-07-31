@@ -1,4 +1,4 @@
-package scalaz.parsers
+package org.spartanz.parserz
 
 import org.specs2.mutable.Specification
 import scalaz.std.option._

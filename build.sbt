@@ -12,7 +12,14 @@ inThisBuild(
         "scm:git:https://github.com/spartanz/parserz.git"
       )
     ),
-    developers := List()
+    developers := List(
+      Developer(
+        "sergei-shabanau",
+        "Sergei Shabanau",
+        "serge.shabanau@gmail.com",
+        url("https://github.com/sergei-shabanau")
+      )
+    )
   )
 )
 
@@ -24,7 +31,7 @@ lazy val root =
       scalacOptions ++= Seq("-Xsource:2.13"),
       libraryDependencies ++= Seq(
         "org.scalaz" %% "scalaz-core" % "7.3.0-M30",
-        "org.specs2" %% "specs2-core" % "4.5.1" % Test
+        "org.specs2" %% "specs2-core" % "4.6.0" % Test
       )
     )
     .enablePlugins(BuildInfoPlugin)
