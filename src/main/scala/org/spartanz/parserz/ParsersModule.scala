@@ -215,7 +215,6 @@ trait ParsersModule {
 
   private def repeatPrint[S, E, A](g: Grammar[S, S, E, A])(s: S, i: Input, as: List[A]): (S, E \/ Input) =
     as.foldLeft[(S, E \/ Input)](s -> Right(i)) {
-      case ((s0, Left(e)), _)    => s0 -> Left(e)
       case ((s0, Right(i0)), a0) => printer(g)(s0, (i0, a0))
     }
 
