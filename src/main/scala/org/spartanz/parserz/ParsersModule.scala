@@ -72,7 +72,7 @@ trait ParsersModule {
     ): Grammar[SI, SO, E, A] =
       Consume(to, from)
 
-    final def consume0[A, E](to: Input => E \/ (Input, A), from: ((Input, A)) => E \/ Input): Grammar[Any, Nothing, E, A] =
+    final def consume0[E, A](to: Input => E \/ (Input, A), from: ((Input, A)) => E \/ Input): Grammar[Any, Nothing, E, A] =
       Consume0(to, from)
 
     final def consumeOptional0[E, A](

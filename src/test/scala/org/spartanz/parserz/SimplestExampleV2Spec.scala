@@ -26,15 +26,15 @@ class SimplestExampleV2Spec extends Specification {
     import Parser._
     import Parser.Grammar._
 
-    val char: Grammar[Any, Nothing, E, Char] = consumeOptional0[E, Char]("expected: char")(
+    val char: Grammar[Any, Nothing, E, Char] = consumeOptional0("expected: char")(
       s => s.headOption.map(s.drop(1) -> _),
       { case (s, c) => Some(s + c.toString) }
     )
 
     val digit: Grammar[Any, Nothing, E, Char]        = char.filter("expected: digit")(_.isDigit)
     val plus: Grammar[Any, Nothing, E, Char]         = char.filter("expected: '+'")(_ == '+')
-    val integer: Grammar[Any, Nothing, E, Int]       = digit.map(_.toString.toInt, _.toString.head)
-    val constant: Grammar[Any, Nothing, E, Constant] = integer.map(Constant, _.value)
+    val integer: Grammar[Any, Nothing, E, Int]       = digit ∘ (_.toString.toInt, _.toString.head)
+    val constant: Grammar[Any, Nothing, E, Constant] = integer ∘ (Constant, _.value)
 
     val expr1: Grammar[Any, Nothing, E, Expression] = constant.mapPartial("expected: Constant")(
       { case c               => c },

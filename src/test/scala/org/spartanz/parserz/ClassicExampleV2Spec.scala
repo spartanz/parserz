@@ -31,14 +31,14 @@ class ClassicExampleV2Spec extends Specification {
     import Parser._
     import Parser.Grammar._
 
-    val char: Grammar[Any, Nothing, E, Char] = consumeOptional0[E, Char]("expected: char")(
+    val char: Grammar[Any, Nothing, E, Char] = consumeOptional0("expected: char")(
       s => s.headOption.map(s.drop(1) -> _),
       { case (s, c) => Some(s + c.toString) }
     )
 
-    val digit: Grammar[Any, Nothing, E, Char]  = "digit" @@ char.filter("expected: digit")(_.isDigit)
-    val paren1: Grammar[Any, Nothing, E, Char] = "(" @@ char.filter("expected: open paren")(_ == '(')
-    val paren2: Grammar[Any, Nothing, E, Char] = ")" @@ char.filter("expected: close paren")(_ == ')')
+    val digit: Grammar[Any, Nothing, E, Char]  = char.filter("expected: digit")(_.isDigit).tag("digit")
+    val paren1: Grammar[Any, Nothing, E, Char] = char.filter("expected: open paren")(_ == '(').tag("(")
+    val paren2: Grammar[Any, Nothing, E, Char] = char.filter("expected: close paren")(_ == ')').tag(")")
 
     val plus: Grammar[Any, Nothing, E, Operator] = "+" @@ char.mapPartial("expected: '+'")(
       { case '+' => Add },
