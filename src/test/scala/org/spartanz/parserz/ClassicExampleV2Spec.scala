@@ -84,7 +84,6 @@ class ClassicExampleV2Spec extends Specification {
         )
     }
 
-
     // todo: generalize fold/unfold
 
     private def fold2(z: Expression, list: List[(Operator, Expression)]): Expression =
@@ -99,7 +98,6 @@ class ClassicExampleV2Spec extends Specification {
       case o @ Operation(_, op2, _) if op2 != op => Some((o, acc))
       case _ @Operation(e1, `op`, e2)            => unfold2(op)((op, e2) :: acc)(e1)
     }
-
 
     val parser: (S, Input) => (S, E \/ (Input, Expression))  = Parser.parser[S, E, Expression](addition)
     val printer: (S, (Input, Expression)) => (S, E \/ Input) = Parser.printer[S, E, Expression](addition)

@@ -44,9 +44,7 @@ trait ParsersModule {
   }
 
   object Grammar {
-    private def asEither[E, A, B](e: E)(f: A => Option[B]): A => E \/ B =
-      f(_).map(Right(_)).getOrElse(Left(e))
-
+    // format: off
     private[parserz] case class Unit0() extends Grammar[Any, Nothing, Nothing, Unit]
     private[parserz] case class Consume0[SI, SO, E, A](to: Input => E \/ (Input, A), from: ((Input, A)) => E \/ Input) extends Grammar[Any, Nothing, E, A]
     private[parserz] case class Consume[SI, SO, E, A](to: (SI, Input) => (SO, E \/ (Input, A)), from: (SI, (Input, A)) => (SO, E \/ Input)) extends Grammar[SI, SO, E, A]
@@ -57,6 +55,7 @@ trait ParsersModule {
     private[parserz] case class Alt[SI, SO, E, A, B](left: Grammar[SI, SO, E, A], right: Grammar[SI, SO, E, B]) extends Grammar[SI, SO, E, A \/ B]
     private[parserz] case class Rep[SI, SO, E, A](value: Grammar[SI, SO, E, A]) extends Grammar[SI, SO, E, List[A]]
     private[parserz] case class Rep1[SI, SO, E, A](value: Grammar[SI, SO, E, A]) extends Grammar[SI, SO, E, ::[A]]
+    // format: on
 
     final val unit: Grammar[Any, Nothing, Nothing, Unit] =
       Unit0()
@@ -67,13 +66,18 @@ trait ParsersModule {
     final def fail[E, A](e: E): Grammar[Any, Nothing, E, A] =
       unit.mapPartial(e)(PartialFunction.empty, PartialFunction.empty)
 
-    final def consume[SI, SO, E, A](to: (SI, Input) => (SO, E \/ (Input, A)), from: (SI, (Input, A)) => (SO, E \/ Input)): Grammar[SI, SO, E, A] =
+    final def consume[SI, SO, E, A](
+      to: (SI, Input) => (SO, E \/ (Input, A)),
+      from: (SI, (Input, A)) => (SO, E \/ Input)
+    ): Grammar[SI, SO, E, A] =
       Consume(to, from)
 
     final def consume0[A, E](to: Input => E \/ (Input, A), from: ((Input, A)) => E \/ Input): Grammar[Any, Nothing, E, A] =
       Consume0(to, from)
 
-    final def consumeOptional0[E, A](e: E)(to: Input => Option[(Input, A)], from: ((Input, A)) => Option[Input]): Grammar[Any, Nothing, E, A] =
+    final def consumeOptional0[E, A](
+      e: E
+    )(to: Input => Option[(Input, A)], from: ((Input, A)) => Option[Input]): Grammar[Any, Nothing, E, A] =
       consume0(asEither(e)(to), asEither(e)(from))
 
     final def delay[SI, SO, E, A](g: => Grammar[SI, SO, E, A]): Grammar[SI, SO, E, A] =
@@ -82,6 +86,9 @@ trait ParsersModule {
     implicit final class ToGrammarOps(self: String) {
       def @@ [SI, SO, E, A](g: Grammar[SI, SO, E, A]): Grammar[SI, SO, E, A] = g @@ self
     }
+
+    private def asEither[E, A, B](e: E)(f: A => Option[B]): A => E \/ B =
+      f(_).map(Right(_)).getOrElse(Left(e))
   }
 
   final def parser[S, E, A](grammar: Grammar[S, S, E, A]): (S, Input) => (S, E \/ (Input, A)) =
@@ -154,7 +161,6 @@ trait ParsersModule {
       case (s1, Right((i1, a))) => repeatParse(g)(s1, i1, a :: as)
     }
 
-
   final def printer[S, E, A](grammar: Grammar[S, S, E, A]): (S, (Input, A)) => (S, E \/ Input) =
     grammar match {
       case Grammar.Unit0()           => (s: S, a: (Input, A)) => (s, Right(a._1))
@@ -212,7 +218,6 @@ trait ParsersModule {
       case ((s0, Left(e)), _)    => s0 -> Left(e)
       case ((s0, Right(i0)), a0) => printer(g)(s0, (i0, a0))
     }
-
 
   final def bnf[SI, SO, E, A](grammar: Grammar[SI, SO, E, A]): String = ???
 }
