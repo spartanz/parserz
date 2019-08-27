@@ -5,7 +5,7 @@ import org.specs2.mutable.Specification
 
 import scala.annotation.tailrec
 
-class SimplestV2Spec extends Specification {
+class SimplestExampleV2Spec extends Specification {
 
   object Syntax {
     sealed trait Expression
@@ -55,13 +55,11 @@ class SimplestV2Spec extends Specification {
     def unfold2[D](separator: D)(acc: List[(D, Expression)])(e: Expression): (Expression, List[(D, Expression)]) =
       e match {
         case c @ Constant(_) => (c, acc)
-        case _ @Sum(e1, e2)  => unfold2(separator)((separator, e2) :: acc)(e1)
+        case _ @ Sum(e1, e2)  => unfold2(separator)((separator, e2) :: acc)(e1)
       }
 
     val parser: (S, Input) => (S, E \/ (Input, Expression)) = Parser.parser[S, E, Expression](expr2)
-
-    val printer: (S, (Input, Expression)) => (S, E \/ Input) =
-      Parser.printer[S, E, Expression](expr2)
+    val printer: (S, (Input, Expression)) => (S, E \/ Input) = Parser.printer[S, E, Expression](expr2)
   }
 
   import Syntax._
