@@ -36,13 +36,15 @@ class ClassicExampleV2Spec extends Specification {
       { case (s, c) => Some(s + c.toString) }
     )
 
-    val digit: Grammar[Any, Nothing, E, Char]    = "digit" @@ char.filter("expected: digit")(_.isDigit)
-    val paren1: Grammar[Any, Nothing, E, Char]   = "(" @@ char.filter("expected: open paren")(_ == '(')
-    val paren2: Grammar[Any, Nothing, E, Char]   = ")" @@ char.filter("expected: close paren")(_ == ')')
+    val digit: Grammar[Any, Nothing, E, Char]  = "digit" @@ char.filter("expected: digit")(_.isDigit)
+    val paren1: Grammar[Any, Nothing, E, Char] = "(" @@ char.filter("expected: open paren")(_ == '(')
+    val paren2: Grammar[Any, Nothing, E, Char] = ")" @@ char.filter("expected: close paren")(_ == ')')
+
     val plus: Grammar[Any, Nothing, E, Operator] = "+" @@ char.mapPartial("expected: '+'")(
       { case '+' => Add },
       { case Add => '+' }
     )
+
     val star: Grammar[Any, Nothing, E, Operator] = "*" @@ char.mapPartial("expected: '*'")(
       { case '*' => Mul },
       { case Mul => '*' }
@@ -50,7 +52,7 @@ class ClassicExampleV2Spec extends Specification {
 
     val integer: Grammar[Any, Nothing, E, Int] = "integer" @@ digit.rep1.map(
       chars => chars.mkString.toInt,
-      int   => { val chars = int.toString.toList; ::(chars.head, chars.tail) }
+      int => { val chars = int.toString.toList; ::(chars.head, chars.tail) }
     )
 
     val constant: Grammar[Any, Nothing, E, Expression] = "Constant" @@ integer.mapPartial("expected: Constant")(
@@ -89,18 +91,19 @@ class ClassicExampleV2Spec extends Specification {
       list.foldLeft(z) { case (e1, (op, e2)) => Operation(e1, op, e2) }
 
     @tailrec
-    private def unfold2(op: Operator)(acc: List[(Operator, Expression)])(e: Expression): Option[(Expression, List[(Operator, Expression)])] = e match {
-      case c @ Constant(_) => Some((c, acc))
-      case _ @ SubExpr(_) => None
+    private def unfold2(
+      op: Operator
+    )(acc: List[(Operator, Expression)])(e: Expression): Option[(Expression, List[(Operator, Expression)])] = e match {
+      case c @ Constant(_)                       => Some((c, acc))
+      case _ @SubExpr(_)                         => None
       case o @ Operation(_, op2, _) if op2 != op => Some((o, acc))
-      case _ @ Operation(e1, `op`, e2) => unfold2(op)((op, e2) :: acc)(e1)
+      case _ @Operation(e1, `op`, e2)            => unfold2(op)((op, e2) :: acc)(e1)
     }
 
 
-    val parser: (S, Input) => (S, E \/ (Input, Expression)) = Parser.parser[S, E, Expression](addition)
+    val parser: (S, Input) => (S, E \/ (Input, Expression))  = Parser.parser[S, E, Expression](addition)
     val printer: (S, (Input, Expression)) => (S, E \/ Input) = Parser.printer[S, E, Expression](addition)
   }
-
 
   import Syntax._
 

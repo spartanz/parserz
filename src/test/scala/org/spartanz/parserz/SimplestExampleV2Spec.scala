@@ -58,7 +58,7 @@ class SimplestExampleV2Spec extends Specification {
         case _ @ Sum(e1, e2)  => unfold2(separator)((separator, e2) :: acc)(e1)
       }
 
-    val parser: (S, Input) => (S, E \/ (Input, Expression)) = Parser.parser[S, E, Expression](expr2)
+    val parser: (S, Input) => (S, E \/ (Input, Expression))  = Parser.parser[S, E, Expression](expr2)
     val printer: (S, (Input, Expression)) => (S, E \/ Input) = Parser.printer[S, E, Expression](expr2)
   }
 
