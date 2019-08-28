@@ -1,5 +1,7 @@
 package org.spartanz.parserz
 
+import com.github.ghik.silencer.silent
+
 import scala.annotation.tailrec
 
 trait ParsersModule {
@@ -51,10 +53,22 @@ trait ParsersModule {
     private[parserz] case class Delay[SI, SO, E, A](delayed: () => Grammar[SI, SO, E, A]) extends Grammar[SI, SO, E, A]
     private[parserz] case class Tag[SI, SO, E, A](value: Grammar[SI, SO, E, A], tag: String) extends Grammar[SI, SO, E, A]
     private[parserz] case class Map[SI, SO, E, A, B](value: Grammar[SI, SO, E, A], to: A => E \/ B, from: B => E \/ A) extends Grammar[SI, SO, E, B]
-    private[parserz] case class Zip[SI, SO, E, A, B](left: Grammar[SI, SO, E, A], right: Grammar[SI, SO, E, B]) extends Grammar[SI, SO, E, A /\ B]
-    private[parserz] case class Alt[SI, SO, E, A, B](left: Grammar[SI, SO, E, A], right: Grammar[SI, SO, E, B]) extends Grammar[SI, SO, E, A \/ B]
-    private[parserz] case class Rep[SI, SO, E, A](value: Grammar[SI, SO, E, A]) extends Grammar[SI, SO, E, List[A]]
-    private[parserz] case class Rep1[SI, SO, E, A](value: Grammar[SI, SO, E, A]) extends Grammar[SI, SO, E, ::[A]]
+
+    private[parserz] case class Zip[SI, SO, E, A, B, Z](left: Grammar[SI, SO, E, A], right: Grammar[SI, SO, E, B])(
+      @silent implicit val ev: Z =:= (A /\ B)
+    ) extends Grammar[SI, SO, E, Z]
+
+    private[parserz] case class Alt[SI, SO, E, A, B, Z](left: Grammar[SI, SO, E, A], right: Grammar[SI, SO, E, B])(
+      @silent implicit val ev: Z =:= (A \/ B)
+    ) extends Grammar[SI, SO, E, Z]
+
+    private[parserz] case class Rep[SI, SO, E, A, Z](value: Grammar[SI, SO, E, A])(
+      @silent implicit val ev: Z =:= List[A]
+    ) extends Grammar[SI, SO, E, Z]
+
+    private[parserz] case class Rep1[SI, SO, E, A, Z](value: Grammar[SI, SO, E, A])(
+      @silent implicit val ev: Z =:= ::[A]
+    ) extends Grammar[SI, SO, E, Z]
     // format: on
 
     final val unit: Grammar[Any, Nothing, Nothing, Unit] =
@@ -106,52 +120,40 @@ trait ParsersModule {
         }
 
       case Grammar.Zip(left, right) =>
-        (s: S, i: Input) => {
-          val ll = left.asInstanceOf[Grammar[Any, Any, E, Any]]
-          val rr = right.asInstanceOf[Grammar[Any, Any, E, Any]]
-          val res = parser(ll)(s, i) match {
+        (s: S, i: Input) =>
+          parser(left)(s, i) match {
             case (s1, Left(e)) =>
               (s1, Left(e))
             case (s1, Right((i1, a))) =>
-              val (s2, res2) = parser(rr)(s1, i1)
-              (s2, res2.map { case (i2, b) => (i2, (a, b)) })
+              val (s2, res2) = parser(right)(s1, i1)
+              (s2, res2.map { case (i2, b) => (i2, (a, b).asInstanceOf[A]) })
           }
-          res.asInstanceOf[(Nothing, E \/ (Input, (Any, Any)))]
-        }
 
       case Grammar.Alt(left, right) =>
-        (s: S, i: Input) => {
-          val ll = left.asInstanceOf[Grammar[Any, Any, E, Any]]
-          val rr = right.asInstanceOf[Grammar[Any, Any, E, Any]]
-          val res = parser(ll)(s, i) match {
+        (s: S, i: Input) =>
+          parser(left)(s, i) match {
             case (s1, Left(_)) =>
-              val (s2, res2) = parser(rr)(s1, i)
-              (s2, res2.map { case (i2, b) => (i2, Right(b)) })
+              val (s2, res2) = parser(right)(s1, i)
+              (s2, res2.map { case (i2, b) => (i2, Right(b).asInstanceOf[A]) })
             case (s1, Right((i1, a))) =>
-              (s1, Right((i1, Left(a))))
+              (s1, Right((i1, Left(a).asInstanceOf[A])))
           }
-          res.asInstanceOf[(Nothing, E \/ (Input, Any \/ Any))]
-        }
 
       case Grammar.Rep(value) =>
         (s: S, i: Input) => {
-          val vv           = value.asInstanceOf[Grammar[Any, Any, E, Any]]
-          val (s1, i1, as) = repeatParse(vv)(s, i, Nil)
-          (s1, Right((i1, as.reverse))).asInstanceOf[(Nothing, E \/ (Input, List[Any]))]
+          val (s1, i1, as) = repeatParse(value)(s, i, Nil)
+          (s1, Right((i1, as.reverse.asInstanceOf[A])))
         }
 
       case Grammar.Rep1(value) =>
-        (s: S, i: Input) => {
-          val vv = value.asInstanceOf[Grammar[Any, Any, E, Any]]
-          val res = parser(vv)(s, i) match {
+        (s: S, i: Input) =>
+          parser(value)(s, i) match {
             case (s1, Left(e)) =>
               (s1, Left(e))
             case (s1, Right((i1, a1))) =>
-              val (s2, i2, as) = repeatParse(vv)(s1, i1, Nil)
-              (s2, Right((i2, ::(a1, as))))
+              val (s2, i2, as) = repeatParse(value)(s1, i1, Nil)
+              (s2, Right((i2, ::(a1, as).asInstanceOf[A])))
           }
-          res.asInstanceOf[(Nothing, E \/ (Input, ::[Any]))]
-        }
     }
 
   @tailrec
@@ -175,41 +177,34 @@ trait ParsersModule {
         }
 
       case Grammar.Zip(left, right) =>
-        // todo: use existential A and B here?
-        (s: S, a: (Input, (Any, Any))) => {
-          val ll         = left.asInstanceOf[Grammar[Any, Any, E, Any]]
-          val rr         = right.asInstanceOf[Grammar[Any, Any, E, Any]]
-          val (s1, res1) = printer(ll)(s, (a._1, a._2._1)).asInstanceOf[(S, E \/ Input)]
-          val res2: (S, E \/ Input) = res1 match {
+        (s: S, a: (Input, A)) => {
+          val (i, (a1, a2)) = (a._1, a._2.asInstanceOf[A /\ A])
+          val (s1, res1)    = printer(left)(s, (i, a1))
+          res1 match {
             case Left(e)   => (s1, Left(e))
-            case Right(i1) => printer(rr)(s1, (i1, a._2._2)).asInstanceOf[(S, E \/ Input)]
+            case Right(i1) => printer(right)(s1, (i1, a2))
           }
-          res2.asInstanceOf[(Nothing, E \/ Input)]
         }
 
       case Grammar.Alt(left, right) =>
-        (s: S, a: (Input, Any \/ Any)) => {
-          val ll = left.asInstanceOf[Grammar[Any, Any, E, Any]]
-          val rr = right.asInstanceOf[Grammar[Any, Any, E, Any]]
-          val res = a._2 match {
-            case Left(v)  => printer(ll)(s, (a._1, v))
-            case Right(v) => printer(rr)(s, (a._1, v))
+        (s: S, a: (Input, A)) => {
+          val (i, aa) = (a._1, a._2.asInstanceOf[A \/ A])
+          aa match {
+            case Left(v)  => printer(left)(s, (i, v))
+            case Right(v) => printer(right)(s, (i, v))
           }
-          res.asInstanceOf[(Nothing, E \/ Input)]
         }
 
       case Grammar.Rep(value) =>
-        (s: S, a: (Input, List[Any])) => {
-          val vv  = value.asInstanceOf[Grammar[Any, Any, E, Any]]
-          val res = repeatPrint(vv)(s, a._1, a._2)
-          res.asInstanceOf[(Nothing, E \/ Input)]
+        (s: S, a: (Input, A)) => {
+          val (i, la) = (a._1, a._2.asInstanceOf[List[A]])
+          repeatPrint(value)(s, i, la)
         }
 
       case Grammar.Rep1(value) =>
-        (s: S, a: (Input, ::[Any])) => {
-          val vv  = value.asInstanceOf[Grammar[Any, Any, E, Any]]
-          val res = repeatPrint(vv)(s, a._1, a._2)
-          res.asInstanceOf[(Nothing, E \/ Input)]
+        (s: S, a: (Input, A)) => {
+          val (i, la) = (a._1, a._2.asInstanceOf[::[A]])
+          repeatPrint(value)(s, i, la)
         }
     }
 
