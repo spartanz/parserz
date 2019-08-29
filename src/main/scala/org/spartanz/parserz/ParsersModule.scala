@@ -45,7 +45,7 @@ trait ParsersModule {
     final def tag(tag: String): Grammar[SI, SO, E, A] = self @@ tag
   }
 
-  object Grammar {
+  object Grammar extends GrammarSyntax {
     // format: off
     private[parserz] case class Unit0() extends Grammar[Any, Nothing, Nothing, Unit]
     private[parserz] case class Consume0[SI, SO, E, A](to: Input => E \/ (Input, A), from: ((Input, A)) => E \/ Input) extends Grammar[Any, Nothing, E, A]
@@ -97,12 +97,33 @@ trait ParsersModule {
     final def delay[SI, SO, E, A](g: => Grammar[SI, SO, E, A]): Grammar[SI, SO, E, A] =
       Delay(() => g)
 
+    private def asEither[E, A, B](e: E)(f: A => Option[B]): A => E \/ B =
+      f(_).map(Right(_)).getOrElse(Left(e))
+  }
+
+  trait GrammarSyntax {
+
     implicit final class ToGrammarOps(self: String) {
+
       def @@ [SI, SO, E, A](g: Grammar[SI, SO, E, A]): Grammar[SI, SO, E, A] = g @@ self
     }
 
-    private def asEither[E, A, B](e: E)(f: A => Option[B]): A => E \/ B =
-      f(_).map(Right(_)).getOrElse(Left(e))
+    implicit final class ToFoldOps1[SI, SO, E, A, B](self: Grammar[SI, SO, E, (A, List[(B, A)])]) {
+
+      def foldLeft(fold: (A, (B, A)) => A, unfold: A =?> (A, (B, A))): Grammar[SI, SO, E, A] =
+        self.map(
+          arg => arg._2.foldLeft(arg._1)(fold),
+          arg => {
+            @tailrec
+            def rec(acc: List[(B, A)])(a: A): (A, List[(B, A)]) =
+              unfold.lift(a) match {
+                case None               => (a, acc)
+                case Some((a1, (b, a))) => rec((b, a) :: acc)(a1)
+              }
+            rec(Nil)(arg)
+          }
+        )
+    }
   }
 
   final def parser[S, E, A](grammar: Grammar[S, S, E, A]): (S, Input) => (S, E \/ (Input, A)) =

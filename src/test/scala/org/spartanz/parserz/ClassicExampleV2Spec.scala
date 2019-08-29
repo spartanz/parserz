@@ -3,8 +3,6 @@ package org.spartanz.parserz
 import org.specs2.matcher.MatchResult
 import org.specs2.mutable.Specification
 
-import scala.annotation.tailrec
-
 class ClassicExampleV2Spec extends Specification {
 
   object Syntax {
@@ -27,9 +25,9 @@ class ClassicExampleV2Spec extends Specification {
     type S = Unit
     type E = String
 
-    import Syntax._
-    import Parser._
     import Parser.Grammar._
+    import Parser._
+    import Syntax._
 
     val char: Grammar[Any, Nothing, E, Char] = consumeOptional0("expected: char")(
       s => s.headOption.map(s.drop(1) -> _),
@@ -69,34 +67,17 @@ class ClassicExampleV2Spec extends Specification {
     })
 
     val multiplication: Grammar[Any, Nothing, E, Expression] = "Multiplication" @@ {
-      (constant ~ (star ~ multiplier).rep)
-        .mapOptional("wrong order of ops (hm...)")(
-          arg => Some((fold2 _).tupled(arg)),
-          unfold2(Mul)(Nil)
-        )
+      (constant ~ (star ~ multiplier).rep).foldLeft(
+        { case (e1, (_, e2))          => Operation(e1, Mul, e2) },
+        { case Operation(e1, Mul, e2) => (e1, (Mul, e2)) }
+      )
     }
 
     lazy val addition: Grammar[Any, Nothing, E, Expression] = "Addition" @@ delay {
-      (multiplication ~ (plus ~ multiplication).rep)
-        .mapOptional("wrong order of ops (hmm...)")(
-          arg => Some((fold2 _).tupled(arg)),
-          unfold2(Add)(Nil)
-        )
-    }
-
-    // todo: generalize fold/unfold
-
-    private def fold2(z: Expression, list: List[(Operator, Expression)]): Expression =
-      list.foldLeft(z) { case (e1, (op, e2)) => Operation(e1, op, e2) }
-
-    @tailrec
-    private def unfold2(
-      op: Operator
-    )(acc: List[(Operator, Expression)])(e: Expression): Option[(Expression, List[(Operator, Expression)])] = e match {
-      case c @ Constant(_)                       => Some((c, acc))
-      case _ @SubExpr(_)                         => None
-      case o @ Operation(_, op2, _) if op2 != op => Some((o, acc))
-      case _ @Operation(e1, `op`, e2)            => unfold2(op)((op, e2) :: acc)(e1)
+      (multiplication ~ (plus ~ multiplication).rep).foldLeft(
+        { case (e1, (_, e2))          => Operation(e1, Add, e2) },
+        { case Operation(e1, Add, e2) => (e1, (Add, e2)) }
+      )
     }
 
     val parser: (S, Input) => (S, E \/ (Input, Expression))  = Parser.parser[S, E, Expression](addition)
@@ -166,9 +147,9 @@ class ClassicExampleV2Spec extends Specification {
     print(Operation(Constant(1), Add, Operation(Constant(2), Add, Constant(3)))) must_=== Left("expected: Constant")
   }
   "incorrect composition 2" in {
-    print(Operation(Constant(1), Add, SubExpr(Constant(2)))) must_=== Left("wrong order of ops (hm...)")
+    print(Operation(Constant(1), Add, SubExpr(Constant(2)))) must_=== Left("expected: Constant")
   }
   "incorrect composition 3" in {
-    print(SubExpr(Constant(1))) must_=== Left("wrong order of ops (hmm...)")
+    print(SubExpr(Constant(1))) must_=== Left("expected: Constant")
   }
 }

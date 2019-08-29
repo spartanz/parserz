@@ -3,8 +3,6 @@ package org.spartanz.parserz
 import org.specs2.matcher.MatchResult
 import org.specs2.mutable.Specification
 
-import scala.annotation.tailrec
-
 class SimplestExampleV2Spec extends Specification {
 
   object Syntax {
@@ -22,9 +20,9 @@ class SimplestExampleV2Spec extends Specification {
     type S = Unit
     type E = String
 
-    import Syntax._
-    import Parser._
     import Parser.Grammar._
+    import Parser._
+    import Syntax._
 
     val char: Grammar[Any, Nothing, E, Char] = consumeOptional0("expected: char")(
       s => s.headOption.map(s.drop(1) -> _),
@@ -41,22 +39,10 @@ class SimplestExampleV2Spec extends Specification {
       { case c @ Constant(_) => c }
     )
 
-    val expr2: Grammar[Any, Nothing, E, Expression] = (expr1 ~ (plus ~ expr1).rep).map(
-      (fold2 _).tupled,
-      unfold2('+')(Nil)
+    val expr2: Grammar[Any, Nothing, E, Expression] = (expr1 ~ (plus ~ expr1).rep).foldLeft(
+      { case (e1, (_, e2)) => Sum(e1, e2) },
+      { case Sum(e1, e2)   => (e1, ('+', e2)) }
     )
-
-    // todo: generalize fold/unfold
-
-    def fold2[D](z: Expression, list: List[(D, Expression)]): Expression =
-      list.foldLeft(z) { case (e1, (_, e2)) => Sum(e1, e2) }
-
-    @tailrec
-    def unfold2[D](separator: D)(acc: List[(D, Expression)])(e: Expression): (Expression, List[(D, Expression)]) =
-      e match {
-        case c @ Constant(_) => (c, acc)
-        case _ @Sum(e1, e2)  => unfold2(separator)((separator, e2) :: acc)(e1)
-      }
 
     val parser: (S, Input) => (S, E \/ (Input, Expression))  = Parser.parser[S, E, Expression](expr2)
     val printer: (S, (Input, Expression)) => (S, E \/ Input) = Parser.printer[S, E, Expression](expr2)
