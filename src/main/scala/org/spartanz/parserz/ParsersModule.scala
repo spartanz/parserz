@@ -3,6 +3,7 @@ package org.spartanz.parserz
 import com.github.ghik.silencer.silent
 
 import scala.annotation.tailrec
+import scala.collection.mutable
 
 trait ParsersModule {
   type Input
@@ -112,7 +113,9 @@ trait ParsersModule {
 
       def foldLeft(fold: (A, (B, A)) => A, unfold: A =?> (A, (B, A))): Grammar[SI, SO, E, A] =
         self.map(
-          arg => arg._2.foldLeft(arg._1)(fold),
+          arg => {
+            arg._2.foldLeft(arg._1)(fold)
+          },
           arg => {
             @tailrec
             def rec(acc: List[(B, A)])(a: A): (A, List[(B, A)]) =
@@ -234,5 +237,42 @@ trait ParsersModule {
       case ((s0, Right(i0)), a0) => printer(g)(s0, (i0, a0))
     }
 
-  final def bnf[SI, SO, E, A](grammar: Grammar[SI, SO, E, A]): String = ???
+  final def bnf[SI, SO, E, A](grammar: Grammar[SI, SO, E, A]): List[String] = {
+    def tagOrExpand[A1](g: Grammar[SI, SO, E, A1]): String =
+      g match {
+        case Grammar.Unit0()          => ""
+        case Grammar.Consume0(_, _)   => ""
+        case Grammar.Consume(_, _)    => ""
+        case Grammar.Delay(delayed)   => tagOrExpand(delayed())
+        case Grammar.Tag(_, tag)      => "<" + tag + ">"
+        case Grammar.Map(value, _, _) => tagOrExpand(value)
+        case Grammar.Zip(left, right) => tagOrExpand(left) + " " + tagOrExpand(right)
+        case Grammar.Alt(left, right) => "(" + tagOrExpand(left) + " | " + tagOrExpand(right) + ")"
+        case Grammar.Rep(value)       => "List(" + tagOrExpand(value) + ")"
+        case Grammar.Rep1(value)      => "NEL(" + tagOrExpand(value) + ")"
+      }
+
+    val visited: mutable.Set[Grammar[SI, SO, E, _]] = mutable.Set.empty
+
+    def show[A1](g: Grammar[SI, SO, E, A1]): List[String -> String] =
+      if (visited.contains(g))
+        Nil
+      else {
+        visited += g
+        g match {
+          case Grammar.Unit0()          => Nil
+          case Grammar.Consume0(_, _)   => Nil
+          case Grammar.Consume(_, _)    => Nil
+          case Grammar.Delay(delayed)   => show(delayed())
+          case Grammar.Tag(value, tag)  => show(value) ::: List(tag -> tagOrExpand(value))
+          case Grammar.Map(value, _, _) => show(value)
+          case Grammar.Zip(left, right) => show(left) ::: show(right)
+          case Grammar.Alt(left, right) => show(left) ::: show(right)
+          case Grammar.Rep(value)       => show(value)
+          case Grammar.Rep1(value)      => show(value)
+        }
+      }
+
+    show(grammar).collect { case (t, v) if v.nonEmpty => "<" + t + "> ::= " + v }
+  }
 }

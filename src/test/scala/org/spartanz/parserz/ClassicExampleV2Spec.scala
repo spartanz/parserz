@@ -29,7 +29,7 @@ class ClassicExampleV2Spec extends Specification {
     import Parser._
     import Syntax._
 
-    val char: Grammar[Any, Nothing, E, Char] = consumeOptional0("expected: char")(
+    val char: Grammar[Any, Nothing, E, Char] = "char" @@ consumeOptional0("expected: char")(
       s => s.headOption.map(s.drop(1) -> _),
       { case (s, c) => Some(s + c.toString) }
     )
@@ -151,5 +151,30 @@ class ClassicExampleV2Spec extends Specification {
   }
   "incorrect composition 3" in {
     print(SubExpr(Constant(1))) must_=== Left("expected: Constant")
+  }
+
+  "Docs" should {
+    "be available for all grammars 1" in {
+      Example.Parser.bnf(Example.integer).mkString("\n", "\n", "\n") must_===
+        """
+          |<digit> ::= <char>
+          |<integer> ::= NEL(<digit>)
+          |""".stripMargin
+    }
+    "be available for all grammars 2" in {
+      Example.Parser.bnf(Example.addition).mkString("\n", "\n", "\n") must_===
+        """
+          |<digit> ::= <char>
+          |<integer> ::= NEL(<digit>)
+          |<Constant> ::= <integer>
+          |<*> ::= <char>
+          |<(> ::= <char>
+          |<)> ::= <char>
+          |<Multiplier> ::= (<(> <Addition> <)> | <Constant>)
+          |<Multiplication> ::= <Constant> List(<*> <Multiplier>)
+          |<+> ::= <char>
+          |<Addition> ::= <Multiplication> List(<+> <Multiplication>)
+          |""".stripMargin
+    }
   }
 }
