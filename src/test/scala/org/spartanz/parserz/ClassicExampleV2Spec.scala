@@ -154,14 +154,27 @@ class ClassicExampleV2Spec extends Specification {
   }
 
   "Docs" should {
+    "be available for all grammars 0" in {
+      Example.Parser.bnf(Example.Parser.Grammar.unit.tag("const")) must_=== Nil
+    }
     "be available for all grammars 1" in {
+      Example.Parser.bnf(
+        Example.Parser.Grammar
+          .consume[Int, Int, String, Any](
+            (s, _) => (s, Left("a test")),
+            (s, _) => (s, Left("a test"))
+          )
+          .tag("failed")
+      ) must_=== Nil
+    }
+    "be available for all grammars 2" in {
       Example.Parser.bnf(Example.integer).mkString("\n", "\n", "\n") must_===
         """
           |<digit> ::= <char>
           |<integer> ::= NEL(<digit>)
           |""".stripMargin
     }
-    "be available for all grammars 2" in {
+    "be available for all grammars 3" in {
       Example.Parser.bnf(Example.addition).mkString("\n", "\n", "\n") must_===
         """
           |<digit> ::= <char>
