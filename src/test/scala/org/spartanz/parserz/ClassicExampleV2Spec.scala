@@ -43,9 +43,9 @@ class ClassicExampleV2Spec extends Specification {
       { case Add => '+' }
     )
 
-    val star: Grammar[Any, Nothing, E, Operator] = "*" @@ char.mapPartial("expected: '*'")(
-      { case '*' => Mul },
-      { case Mul => '*' }
+    val star: Grammar[Any, Nothing, E, Operator] = "*" @@ char.mapOptional("expected: '*'")(
+      { case '*' => Some(Mul); case _ => None },
+      { case Mul => Some('*'); case _ => None }
     )
 
     val integer: Grammar[Any, Nothing, E, Int] = "integer" @@ digit.rep1.map(
