@@ -21,7 +21,30 @@ trait ParsersModule {
       Map[SI, SO, E1, A, B](self, asEither(e)(to.lift), asEither(e)(from.lift))
 
     final def filter[E1 >: E](e: E1)(f: A => Boolean): Grammar[SI, SO, E1, A] =
-      mapPartial[E1, A](e)({ case a if f(a) => a }, { case a if f(a) => a })
+      Map[SI, SO, E1, A, A](self, asEither(e)(Some(_).filter(f)), asEither(e)(Some(_).filter(f)))
+
+    final def mapS[SI1 <: SI, SO1 >: SO, B](to: (SI1, A) => (SO1, B), from: (SI1, B) => (SO1, A)): Grammar[SI1, SO1, E, B] =
+      MapS[SI1, SO1, E, A, B](
+        self,
+        { case (si, a) => val (so, b) = to(si, a); (so, Right(b)) },
+        { case (si, b) => val (so, a) = from(si, b); (so, Right(a)) }
+      )
+
+    final def mapPartialS[SI1 <: SI, SO1 >: SO, E1 >: E, B](
+      es: SI1 => (SO1, E1)
+    )(to: (SI1, A) =?> (SO1, B), from: (SI1, B) =?> (SO1, A)): Grammar[SI1, SO1, E1, B] =
+      MapS[SI1, SO1, E1, A, B](self, asEither(es)(to.lift), asEither(es)(from.lift))
+
+    final def mapOptional[SI1 <: SI, SO1 >: SO, E1 >: E, B](
+      es: SI1 => (SO1, E1)
+    )(to: A => Option[B], from: B => Option[A]): Grammar[SI1, SO1, E1, B] =
+      MapES[SI1, SO1, E1, A, B](self, es, to, from)
+
+    final def mapPartial[SI1 <: SI, SO1 >: SO, E1 >: E, B](es: SI1 => (SO1, E1))(to: A =?> B, from: B =?> A): Grammar[SI1, SO1, E1, B] =
+      MapES[SI1, SO1, E1, A, B](self, es, to.lift, from.lift)
+
+    final def filter[SI1 <: SI, SO1 >: SO, E1 >: E](es: SI1 => (SO1, E1))(f: A => Boolean): Grammar[SI1, SO1, E1, A] =
+      MapES[SI1, SO1, E1, A, A](self, es, Some(_).filter(f), Some(_).filter(f))
 
     final def zip[SI1 <: SI, SO1 >: SO, E1 >: E, B](that: Grammar[SI1, SO1, E1, B]): Grammar[SI1, SO1, E1, A /\ B] =
       Zip(self, that)
@@ -52,6 +75,8 @@ trait ParsersModule {
     private[parserz] case class Delay[SI, SO, E, A](delayed: () => Grammar[SI, SO, E, A]) extends Grammar[SI, SO, E, A]
     private[parserz] case class Tag[SI, SO, E, A](value: Grammar[SI, SO, E, A], tag: String) extends Grammar[SI, SO, E, A]
     private[parserz] case class Map[SI, SO, E, A, B](value: Grammar[SI, SO, E, A], to: A => E \/ B, from: B => E \/ A) extends Grammar[SI, SO, E, B]
+    private[parserz] case class MapS[SI, SO, E, A, B](value: Grammar[SI, SO, E, A], to: (SI, A) => (SO, E \/ B), from: (SI, B) => (SO, E \/ A)) extends Grammar[SI, SO, E, B]
+    private[parserz] case class MapES[SI, SO, E, A, B](value: Grammar[SI, SO, E, A], es: SI => (SO, E), to: A => Option[B], from: B => Option[A]) extends Grammar[SI, SO, E, B]
     private[parserz] case class Zip[SI, SO, E, A, B](left: Grammar[SI, SO, E, A], right: Grammar[SI, SO, E, B]) extends Grammar[SI, SO, E, A /\ B]
     private[parserz] case class Alt[SI, SO, E, A, B](left: Grammar[SI, SO, E, A], right: Grammar[SI, SO, E, B]) extends Grammar[SI, SO, E, A \/ B]
     private[parserz] case class Rep[SI, SO, E, A](value: Grammar[SI, SO, E, A]) extends Grammar[SI, SO, E, List[A]]
@@ -67,11 +92,26 @@ trait ParsersModule {
     final def fail[E, A](e: E): Grammar[Any, Nothing, E, A] =
       unit.mapPartial(e)(PartialFunction.empty, PartialFunction.empty)
 
+    final def fail[SI, SO, E, A](es: SI => (SO, E)): Grammar[SI, SO, E, A] =
+      unit.mapPartial(es)(PartialFunction.empty, PartialFunction.empty)
+
     final def consume[SI, SO, E, A](
       to: (SI, Input) => (SO, E \/ (Input, A)),
       from: (SI, (Input, A)) => (SO, E \/ Input)
     ): Grammar[SI, SO, E, A] =
       Consume(to, from)
+
+    final def consumeOptional[SI, SO, E, A](e: E)(
+      to: (SI, Input) => (SO, Option[(Input, A)]),
+      from: (SI, (Input, A)) => (SO, Option[Input])
+    ): Grammar[SI, SO, E, A] =
+      consume(
+        { (si: SI, i: Input) =>
+          val (so, r) = to(si, i); (so, r.map(Right(_)).getOrElse(Left(e)))
+        }, { (si: SI, x: (Input, A)) =>
+          val (so, r) = from(si, x); (so, r.map(Right(_)).getOrElse(Left(e)))
+        }
+      )
 
     final def consume0[E, A](to: Input => E \/ (Input, A), from: ((Input, A)) => E \/ Input): Grammar[Any, Nothing, E, A] =
       Consume0(to, from)
@@ -86,6 +126,12 @@ trait ParsersModule {
 
     private def asEither[E, A, B](e: E)(f: A => Option[B]): A => E \/ B =
       f(_).map(Right(_)).getOrElse(Left(e))
+
+    private def asEither[SI, SO, E, A, B](es: SI => (SO, E))(f: ((SI, A)) => Option[(SO, B)]): (SI, A) => (SO, E \/ B) =
+      (si, a) =>
+        f((si, a))
+          .map { case (so, b) => so -> Right(b) }
+          .getOrElse { val (so, e1) = es(si); so -> Left(e1) }
   }
 
   trait GrammarSyntax {
@@ -127,6 +173,33 @@ trait ParsersModule {
         (s: S, i: Input) => {
           val (s1, res1) = parser(value)(s, i)
           (s1, res1.flatMap { case (i1, a) => to(a).map(i1 -> _) })
+        }
+
+      case Grammar.MapS(value, to, _) =>
+        (s: S, i: Input) => {
+          val (s1, res1) = parser(value)(s, i)
+          res1.fold(
+            e => s1 -> Left(e),
+            { case (i1, a) => val (s2, res2) = to(s1, a); (s2, res2.map(i1 -> _)) }
+          )
+        }
+
+      case Grammar.MapES(value, es, to, _) =>
+        (s: S, i: Input) => {
+          val (s1, res1) = parser(value)(s, i)
+          res1.fold(
+            e => s1 -> Left(e), {
+              case (i1, a) =>
+                to(a)
+                  .map { b =>
+                    s1 -> Right(i1 -> b)
+                  }
+                  .getOrElse {
+                    val (s2, e) = es(s1)
+                    s2 -> Left(e)
+                  }
+            }
+          )
         }
 
       case zip: Grammar.Zip[S, S, E, ta, tb] =>
@@ -195,6 +268,27 @@ trait ParsersModule {
           from(a._2).fold(e => s -> Left(e), b => printer(value)(s, (a._1, b)))
         }
 
+      case Grammar.MapS(value, _, from) =>
+        (s: S, a: (Input, A)) => {
+          val (s1, res1) = from(s, a._2)
+          res1.fold(
+            e => s1 -> Left(e),
+            b => printer(value)(s1, (a._1, b))
+          )
+        }
+
+      case Grammar.MapES(value, es, _, from) =>
+        (s: S, a: (Input, A)) => {
+          from(a._2)
+            .map { b =>
+              printer(value)(s, (a._1, b))
+            }
+            .getOrElse {
+              val (s1, e1) = es(s)
+              s1 -> Left(e1)
+            }
+        }
+
       case zip: Grammar.Zip[S, S, E, ta, tb] =>
         (s: S, in: (Input, ta /\ tb)) => {
           val (i, (a, b)) = (in._1, in._2)
@@ -235,16 +329,18 @@ trait ParsersModule {
   final def bnf[SI, SO, E, A](grammar: Grammar[SI, SO, E, A]): List[String] = {
     def tagOrExpand[A1](g: Grammar[SI, SO, E, A1]): String =
       g match {
-        case Grammar.Unit0()          => ""
-        case Grammar.Consume0(_, _)   => ""
-        case Grammar.Consume(_, _)    => ""
-        case Grammar.Delay(delayed)   => tagOrExpand(delayed())
-        case Grammar.Tag(_, tag)      => "<" + tag + ">"
-        case Grammar.Map(value, _, _) => tagOrExpand(value)
-        case Grammar.Zip(left, right) => tagOrExpand(left) + " " + tagOrExpand(right)
-        case Grammar.Alt(left, right) => "(" + tagOrExpand(left) + " | " + tagOrExpand(right) + ")"
-        case Grammar.Rep(value)       => "List(" + tagOrExpand(value) + ")"
-        case Grammar.Rep1(value)      => "NEL(" + tagOrExpand(value) + ")"
+        case Grammar.Unit0()               => ""
+        case Grammar.Consume0(_, _)        => ""
+        case Grammar.Consume(_, _)         => ""
+        case Grammar.Delay(delayed)        => tagOrExpand(delayed())
+        case Grammar.Tag(_, tag)           => "<" + tag + ">"
+        case Grammar.Map(value, _, _)      => tagOrExpand(value)
+        case Grammar.MapS(value, _, _)     => tagOrExpand(value)
+        case Grammar.MapES(value, _, _, _) => tagOrExpand(value)
+        case Grammar.Zip(left, right)      => tagOrExpand(left) + " " + tagOrExpand(right)
+        case Grammar.Alt(left, right)      => "(" + tagOrExpand(left) + " | " + tagOrExpand(right) + ")"
+        case Grammar.Rep(value)            => "List(" + tagOrExpand(value) + ")"
+        case Grammar.Rep1(value)           => "NEL(" + tagOrExpand(value) + ")"
       }
 
     val visited: mutable.Set[Grammar[SI, SO, E, _]] = mutable.Set.empty
@@ -255,16 +351,18 @@ trait ParsersModule {
       else {
         visited += g
         g match {
-          case Grammar.Unit0()          => Nil
-          case Grammar.Consume0(_, _)   => Nil
-          case Grammar.Consume(_, _)    => Nil
-          case Grammar.Delay(delayed)   => show(delayed())
-          case Grammar.Tag(value, tag)  => show(value) ::: List(tag -> tagOrExpand(value))
-          case Grammar.Map(value, _, _) => show(value)
-          case Grammar.Zip(left, right) => show(left) ::: show(right)
-          case Grammar.Alt(left, right) => show(left) ::: show(right)
-          case Grammar.Rep(value)       => show(value)
-          case Grammar.Rep1(value)      => show(value)
+          case Grammar.Unit0()               => Nil
+          case Grammar.Consume0(_, _)        => Nil
+          case Grammar.Consume(_, _)         => Nil
+          case Grammar.Delay(delayed)        => show(delayed())
+          case Grammar.Tag(value, tag)       => show(value) ::: List(tag -> tagOrExpand(value))
+          case Grammar.Map(value, _, _)      => show(value)
+          case Grammar.MapS(value, _, _)     => show(value)
+          case Grammar.MapES(value, _, _, _) => show(value)
+          case Grammar.Zip(left, right)      => show(left) ::: show(right)
+          case Grammar.Alt(left, right)      => show(left) ::: show(right)
+          case Grammar.Rep(value)            => show(value)
+          case Grammar.Rep1(value)           => show(value)
         }
       }
 
