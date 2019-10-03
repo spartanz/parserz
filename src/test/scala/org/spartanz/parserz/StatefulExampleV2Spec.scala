@@ -73,10 +73,9 @@ class StatefulExampleV2Spec extends Specification {
     )
 
     val integer: G[Int] = "integer" @@ digit.rep1
-      .filter(State.acc("Number is too big"))(_.size <= 7)
-      .map(
-        chars => chars.mkString.toInt,
-        int => { val chars = int.toString.toList; ::(chars.head, chars.tail) }
+      .mapPartialS(State.acc("Number is too big"))(
+        { case (s, chars) if chars.size <= 7 => (s, chars.mkString.toInt) },
+        { case (s, int)                      => val chars = int.toString.toList; (s, ::(chars.head, chars.tail)) }
       )
 
     val constant: G[Expression] = "Constant" @@ integer.mapPartial(State.acc("expected: Constant"))(
@@ -84,12 +83,12 @@ class StatefulExampleV2Spec extends Specification {
       { case Constant(i) => i }
     )
 
-    val multiplier: G[Expression] = "Multiplier" @@ ((paren1 ~ addition ~ paren2) | constant).map({
-      case Left(((_, exp), _)) => SubExpr(exp)
-      case Right(exp)          => exp
+    val multiplier: G[Expression] = "Multiplier" @@ ((paren1 ~ addition ~ paren2) | constant).mapS({
+      case (s, Left(((_, exp), _))) => (s, SubExpr(exp))
+      case (s, Right(exp))          => (s, exp)
     }, {
-      case SubExpr(exp) => Left((('(', exp), ')'))
-      case exp          => Right(exp)
+      case (s, SubExpr(exp)) => (s, Left((('(', exp), ')')))
+      case (s, exp)          => (s, Right(exp))
     })
 
     val multiplication: G[Expression] = "Multiplication" @@ {
@@ -159,5 +158,20 @@ class StatefulExampleV2Spec extends Specification {
   }
   "sum of three plussed" in {
     parse("1+2+3+++++") must_=== ((7, List("expected: digit", "expected: eof"), Left("expected: eof")))
+  }
+  "docs" in {
+    Example.Parser.bnf(Example.expr).mkString("\n", "\n", "\n") must_===
+      """
+        |<digit> ::= <char>
+        |<integer> ::= NEL(<digit>)
+        |<Constant> ::= <integer>
+        |<*> ::= <char>
+        |<(> ::= <char>
+        |<)> ::= <char>
+        |<Multiplier> ::= (<(> <Addition> <)> | <Constant>)
+        |<Multiplication> ::= <Constant> List(<*> <Multiplier>)
+        |<+> ::= <char>
+        |<Addition> ::= <Multiplication> List(<+> <Multiplication>)
+        |""".stripMargin
   }
 }

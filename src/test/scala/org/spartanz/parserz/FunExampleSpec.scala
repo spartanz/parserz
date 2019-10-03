@@ -58,6 +58,8 @@ class FunExampleSpec extends Specification {
       { case (s, c) => Right(s + c.toString) }
     )
 
+    val bad: Grammar[S, S, E, String] = fail(s => (s + 1, "🚫🚫"))
+
     val effectful: Grammar[S, S, E, Char] = consume(
       { case (si, s)      => si + 1 -> s.headOption.map(s.drop(1) -> _).map(Right(_)).getOrElse(Left("empty")) },
       { case (si, (s, c)) => si - 1 -> Right(s + c.toString) }
@@ -86,6 +88,10 @@ class FunExampleSpec extends Specification {
 
     "-> fail to consume value (with state change)" in {
       parser(effectful)(0, "") must_=== ((1, Left("empty")))
+    }
+
+    "-> always fail (with state change)" in {
+      parser(bad)(0, "") must_=== ((1, Left("🚫🚫")))
     }
 
     "-> consume value (with more state change)" in {
