@@ -74,8 +74,8 @@ class StatefulExampleV2Spec extends Specification {
 
     val integer: G[Int] = "integer" @@ digit.rep1
       .mapPartialS(State.acc("Number is too big"))(
-        { case (s, chars) if chars.size <= 7 => (s, chars.mkString.toInt) },
-        { case (s, int)                      => val chars = int.toString.toList; (s, ::(chars.head, chars.tail)) }
+        { case (s, chars) if chars.size <= 7          => (s, chars.mkString.toInt) },
+        { case (s, int) if 0 <= int && int <= 9999999 => val chars = int.toString.toList; (s, ::(chars.head, chars.tail)) }
       )
 
     val constant: G[Expression] = "Constant" @@ integer.mapPartial(State.acc("expected: Constant"))(
@@ -114,11 +114,11 @@ class StatefulExampleV2Spec extends Specification {
   import Example.State
   import Syntax._
 
-  private def parse(s: String)  = { val (c, r) = Example.parser(State(s.length, 0, Nil), s); (c.cur, c.err.reverse, r) }
+  private def parse(s: String)  = { val (st, r) = Example.parser(State(s.length, 0, Nil), s); (st.cur, st.err.reverse, r) }
   private def parse0(s: String) = parse(s)._3.right.get._2
 
-  private def print(e: Expression)  = Example.printer(State(0, 0, Nil), ("", e))._2
-  private def print0(e: Expression) = print(e).right.get
+  private def print(e: Expression)  = { val (st, r) = Example.printer(State(0, 0, Nil), ("", e)); (st.cur, st.err.reverse, r) }
+  private def print0(e: Expression) = print(e)._3.right.get
 
   private def loop0(s: String, e: Expression): MatchResult[Any] = {
     val parsed  = parse0(s)
@@ -158,6 +158,12 @@ class StatefulExampleV2Spec extends Specification {
   }
   "sum of three plussed" in {
     parse("1+2+3+++++") must_=== ((7, List("expected: digit", "expected: eof"), Left("expected: eof")))
+  }
+  "incorrect number" in {
+    print(Constant(12345678)) must_=== ((0, List("Number is too big"), Left("Number is too big")))
+  }
+  "incorrect composition" in {
+    print(SubExpr(Constant(1))) must_=== ((0, List("expected: Constant"), Left("expected: Constant")))
   }
   "docs" in {
     Example.Parser.bnf(Example.expr).mkString("\n", "\n", "\n") must_===
