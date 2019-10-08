@@ -24,7 +24,7 @@ class SimplestExampleV2Spec extends Specification {
     import Parser._
     import Syntax._
 
-    val char: Grammar[Any, Nothing, E, Char] = consumeOptional0("expected: char")(
+    val char: Grammar[Any, Nothing, E, Char] = consumeOption("expected: char")(
       s => s.headOption.map(s.drop(1) -> _),
       { case (s, c) => Some(s + c.toString) }
     )

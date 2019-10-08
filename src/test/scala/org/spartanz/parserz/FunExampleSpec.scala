@@ -53,14 +53,14 @@ class FunExampleSpec extends Specification {
     import Parser._
     import Parser.Grammar._
 
-    val neutral: Grammar[Any, Nothing, E, Char] = consume0(
+    val neutral: Grammar[Any, Nothing, E, Char] = consume(
       s => s.headOption.map(s.drop(1) -> _).map(Right(_)).getOrElse(Left("empty")),
       { case (s, c) => Right(s + c.toString) }
     )
 
     val bad: Grammar[S, S, E, String] = fail(s => (s + 1, "🚫🚫"))
 
-    val effectful: Grammar[S, S, E, Char] = consume(
+    val effectful: Grammar[S, S, E, Char] = consumeStatefully(
       { case (si, s)      => si + 1 -> s.headOption.map(s.drop(1) -> _).map(Right(_)).getOrElse(Left("empty")) },
       { case (si, (s, c)) => si - 1 -> Right(s + c.toString) }
     )

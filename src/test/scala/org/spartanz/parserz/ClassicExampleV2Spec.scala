@@ -29,7 +29,7 @@ class ClassicExampleV2Spec extends Specification {
     import Parser._
     import Syntax._
 
-    val char: Grammar[Any, Nothing, E, Char] = "char" @@ consumeOptional0("expected: char")(
+    val char: Grammar[Any, Nothing, E, Char] = "char" @@ consumeOption("expected: char")(
       s => s.headOption.map(s.drop(1) -> _),
       { case (s, c) => Some(s + c.toString) }
     )
@@ -43,7 +43,7 @@ class ClassicExampleV2Spec extends Specification {
       { case Add => '+' }
     )
 
-    val star: Grammar[Any, Nothing, E, Operator] = "*" @@ char.mapOptional("expected: '*'")(
+    val star: Grammar[Any, Nothing, E, Operator] = "*" @@ char.mapOption("expected: '*'")(
       { case '*' => Some(Mul); case _ => None },
       { case Mul => Some('*'); case _ => None }
     )
@@ -160,7 +160,7 @@ class ClassicExampleV2Spec extends Specification {
     "be available for all grammars 1" in {
       Example.Parser.bnf(
         Example.Parser.Grammar
-          .consume[Int, Int, String, Any](
+          .consumeStatefully[Int, Int, String, Any](
             (s, _) => (s, Left("a test")),
             (s, _) => (s, Left("a test"))
           )

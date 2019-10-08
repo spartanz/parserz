@@ -38,7 +38,7 @@ class StatefulExampleV2Spec extends Specification {
     type E    = String
     type G[A] = Grammar[S, S, E, A]
 
-    val char: G[Char] = "char" @@ consumeOptional("expected: char")(
+    val char: G[Char] = "char" @@ consumeStatefullyOption("expected: char")(
       {
         case (s, i) =>
           i.headOption.map(i.drop(1) -> _) match {
@@ -53,7 +53,7 @@ class StatefulExampleV2Spec extends Specification {
       }
     )
 
-    val eof: G[Unit] = consume(
+    val eof: G[Unit] = consumeStatefully(
       { case (s, i)      => if (i.isEmpty) (s, Right((i, ()))) else (s.acc("expected: eof"), Left("expected: eof")) },
       { case (s, (i, _)) => (s, Right(i)) }
     )
@@ -67,13 +67,13 @@ class StatefulExampleV2Spec extends Specification {
       { case Add => '+' }
     )
 
-    val star: G[Operator] = "*" @@ char.mapOptional(State.acc("expected: '*'"))(
+    val star: G[Operator] = "*" @@ char.mapOption(State.acc("expected: '*'"))(
       { case '*' => Some(Mul); case _ => None },
       { case Mul => Some('*'); case _ => None }
     )
 
     val integer: G[Int] = "integer" @@ digit.rep1
-      .mapPartialS(State.acc("Number is too big"))(
+      .mapStatefullyPartial(State.acc("Number is too big"))(
         { case (s, chars) if chars.size <= 7          => (s, chars.mkString.toInt) },
         { case (s, int) if 0 <= int && int <= 9999999 => val chars = int.toString.toList; (s, ::(chars.head, chars.tail)) }
       )
@@ -83,7 +83,7 @@ class StatefulExampleV2Spec extends Specification {
       { case Constant(i) => i }
     )
 
-    val multiplier: G[Expression] = "Multiplier" @@ ((paren1 ~ addition ~ paren2) | constant).mapS({
+    val multiplier: G[Expression] = "Multiplier" @@ ((paren1 ~ addition ~ paren2) | constant).mapStatefully({
       case (s, Left(((_, exp), _))) => (s, SubExpr(exp))
       case (s, Right(exp))          => (s, exp)
     }, {
