@@ -36,7 +36,7 @@ lazy val root =
   (project in file("."))
     .settings(
       name := "parserz",
-      scalaVersion := "2.12.9",
+      scalaVersion := "2.12.10",
       scalacOptions ++= Seq("-Xsource:2.13"),
       libraryDependencies ++= Seq(
         compilerPlugin("org.typelevel" %% "kind-projector"     % "0.10.3"),
