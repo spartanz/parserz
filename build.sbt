@@ -36,11 +36,12 @@ lazy val root =
   (project in file("."))
     .settings(
       name := "parserz",
-      scalaVersion := "2.12.10",
-      scalacOptions ++= Seq("-Xsource:2.13"),
+      scalaVersion := "2.13.1",
+      crossScalaVersions := Seq("2.12.10", "2.13.1"),
+      scalacOptions --= Seq("-Yno-adapted-args", "-Ypartial-unification"),
       libraryDependencies ++= Seq(
-        compilerPlugin("org.typelevel" %% "kind-projector"     % "0.10.3"),
-        compilerPlugin("com.olegpy"    %% "better-monadic-for" % "0.3.1"),
+        compilerPlugin(("org.typelevel" % "kind-projector" % "0.11.0").cross(CrossVersion.full)),
+        compilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
         "org.specs2" %% "specs2-core" % "4.8.0" % Test
       )
     )
