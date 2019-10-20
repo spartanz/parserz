@@ -244,7 +244,7 @@ trait ParsersModule {
               (s1, Left(e))
             case (s1, Right((i1, a1))) =>
               val (s2, i2, as) = repeatParse(rep.value)(s1, i1, Nil)
-              (s2, Right((i2, ::(a1, as))))
+              (s2, Right((i2, ::(a1, as.reverse))))
           }
           res2
         }
