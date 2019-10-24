@@ -41,8 +41,7 @@ lazy val root =
       libraryDependencies ++= Seq(
         compilerPlugin("org.typelevel" %% "kind-projector"     % "0.10.3"),
         compilerPlugin("com.olegpy"    %% "better-monadic-for" % "0.3.1"),
-        "org.scalaz" %% "scalaz-core" % "7.3.0-M30",
-        "org.specs2" %% "specs2-core" % "4.6.0" % Test
+        "org.specs2" %% "specs2-core" % "4.8.0" % Test
       )
     )
     .enablePlugins(BuildInfoPlugin)

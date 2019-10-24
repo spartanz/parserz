@@ -3,7 +3,7 @@ package org.spartanz.parserz
 import org.specs2.matcher.MatchResult
 import org.specs2.mutable.Specification
 
-class StatefulExampleV2Spec extends Specification {
+class StatefulExampleSpec extends Specification {
 
   object Syntax {
     sealed trait Expression
