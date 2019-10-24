@@ -26,12 +26,10 @@ class StatefulExampleV2Spec extends Specification {
     import Parser._
     import Syntax._
 
-    case class State(size: Int, cur: Int, err: List[String]) {
-      def acc(e: String): State = copy(err = e :: err)
-    }
+    case class State(size: Int, cur: Int, err: List[String])
 
     object State {
-      def acc(e: String): State => (State, String) = _.acc(e) -> e
+      def acc(e: String): State => (State, String) = s => s.copy(err = e :: s.err) -> e
     }
 
     type S    = State
@@ -54,7 +52,7 @@ class StatefulExampleV2Spec extends Specification {
     )
 
     val eof: G[Unit] = consumeStatefully(
-      { case (s, i)      => if (i.isEmpty) (s, Right((i, ()))) else (s.acc("expected: eof"), Left("expected: eof")) },
+      { case (s, i)      => if (i.isEmpty) (s, Right((i, ()))) else (s.copy(err = "expected: eof" :: s.err), Left("expected: eof")) },
       { case (s, (i, _)) => (s, Right(i)) }
     )
 
