@@ -52,8 +52,8 @@ class CallsExampleSpec extends Specification {
 
   import Example.Call
 
-  private def parse(s: String) = Example.parser((), s.toList)._2.right.get._2
-  private def print(c: Call)   = Example.printer((), (Nil, c))._2.map(_.reverse.mkString).right.get
+  private def parse(s: String) = Example.parser((), s.toList)._2.toOption.get._2
+  private def print(c: Call)   = Example.printer((), (Nil, c))._2.map(_.reverse.mkString).toOption.get
 
   private def assert(s: String, c: Call): MatchResult[Any] = {
     val parsed  = parse(s)

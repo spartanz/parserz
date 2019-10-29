@@ -113,10 +113,10 @@ class StatefulExampleSpec extends Specification {
   import Syntax._
 
   private def parse(s: String)  = { val (st, r) = Example.parser(State(s.length, 0, Nil), s); (st.cur, st.err.reverse, r) }
-  private def parse0(s: String) = parse(s)._3.right.get._2
+  private def parse0(s: String) = parse(s)._3.toOption.get._2
 
   private def print(e: Expression)  = { val (st, r) = Example.printer(State(0, 0, Nil), ("", e)); (st.cur, st.err.reverse, r) }
-  private def print0(e: Expression) = print(e)._3.right.get
+  private def print0(e: Expression) = print(e)._3.toOption.get
 
   private def loop0(s: String, e: Expression): MatchResult[Any] = {
     val parsed  = parse0(s)

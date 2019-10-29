@@ -51,10 +51,10 @@ class SimplestExampleSpec extends Specification {
   import Syntax._
 
   private def parse(s: String)  = Example.parser((), s)._2
-  private def parse0(s: String) = parse(s).right.get._2
+  private def parse0(s: String) = parse(s).toOption.get._2
 
   private def print(e: Expression)  = Example.printer((), ("", e))._2
-  private def print0(e: Expression) = print(e).right.get
+  private def print0(e: Expression) = print(e).toOption.get
 
   private def loop0(s: String, e: Expression): MatchResult[Any] = {
     val parsed  = parse0(s)
