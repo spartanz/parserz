@@ -151,6 +151,9 @@ class StatefulExampleSpec extends Specification {
   "more than enough digits" in {
     parse(List.fill(100)('5').mkString) must_=== ((100, List("Number is too big"), Left("Number is too big")))
   }
+  "really a lot of digits" in {
+    parse(List.fill(10000)('5').mkString) must_===((10000, List("Number is too big"), Left("Number is too big")))
+  }
   "mul of two starred" in {
     parse("1*2*****") must_=== ((4, List("expected: '+'", "expected: eof"), Left("expected: eof")))
   }
