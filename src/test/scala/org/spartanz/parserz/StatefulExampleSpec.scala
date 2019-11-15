@@ -56,16 +56,16 @@ class StatefulExampleSpec extends Specification {
       { case (s, (i, _)) => (s, Right(i)) }
     )
 
-    val digit: G[Char]  = char.filter(State.acc("expected: digit"))(_.isDigit).tag("digit")
-    val paren1: G[Char] = char.filter(State.acc("expected: open paren"))(_ == '(').tag("(")
-    val paren2: G[Char] = char.filter(State.acc("expected: close paren"))(_ == ')').tag(")")
+    val digit: G[Char]  = char.filterS(State.acc("expected: digit"))(_.isDigit).tag("digit")
+    val paren1: G[Char] = char.filterS(State.acc("expected: open paren"))(_ == '(').tag("(")
+    val paren2: G[Char] = char.filterS(State.acc("expected: close paren"))(_ == ')').tag(")")
 
-    val plus: G[Operator] = "+" @@ char.mapPartial(State.acc("expected: '+'"))(
+    val plus: G[Operator] = "+" @@ char.mapPartialS(State.acc("expected: '+'"))(
       { case '+' => Add },
       { case Add => '+' }
     )
 
-    val star: G[Operator] = "*" @@ char.mapOption(State.acc("expected: '*'"))(
+    val star: G[Operator] = "*" @@ char.mapOptionS(State.acc("expected: '*'"))(
       { case '*' => Some(Mul); case _ => None },
       { case Mul => Some('*'); case _ => None }
     )
@@ -76,7 +76,7 @@ class StatefulExampleSpec extends Specification {
         { case (s, int) if 0 <= int && int <= 9999999 => val chars = int.toString.toList; (s, ::(chars.head, chars.tail)) }
       )
 
-    val constant: G[Expression] = "Constant" @@ integer.mapPartial(State.acc("expected: Constant"))(
+    val constant: G[Expression] = "Constant" @@ integer.mapPartialS(State.acc("expected: Constant"))(
       { case i           => Constant(i) },
       { case Constant(i) => i }
     )
