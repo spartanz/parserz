@@ -31,20 +31,20 @@ trait ParsersModule {
       )
 
     final def mapStatefullyPartial[SI1 <: SI, SO1 >: SO, E1 >: E, B](
-      es: SI1 => (SO1, E1)
+      fe: SI1 => (SO1, E1)
     )(to: (SI1, A) =?> (SO1, B), from: (SI1, B) =?> (SO1, A)): Grammar[SI1, SO1, E1, B] =
-      MapS[SI1, SO1, E1, A, B](self, asEither(es)(to.lift), asEither(es)(from.lift))
+      MapS[SI1, SO1, E1, A, B](self, asEither(fe)(to.lift), asEither(fe)(from.lift))
 
-    final def mapOption[SI1 <: SI, SO1 >: SO, E1 >: E, B](
-      es: SI1 => (SO1, E1)
+    final def mapOptionS[SI1 <: SI, SO1 >: SO, E1 >: E, B](
+      fe: SI1 => (SO1, E1)
     )(to: A => Option[B], from: B => Option[A]): Grammar[SI1, SO1, E1, B] =
-      MapES[SI1, SO1, E1, A, B](self, es, to, from)
+      MapES[SI1, SO1, E1, A, B](self, fe, to, from)
 
-    final def mapPartial[SI1 <: SI, SO1 >: SO, E1 >: E, B](es: SI1 => (SO1, E1))(to: A =?> B, from: B =?> A): Grammar[SI1, SO1, E1, B] =
-      MapES[SI1, SO1, E1, A, B](self, es, to.lift, from.lift)
+    final def mapPartialS[SI1 <: SI, SO1 >: SO, E1 >: E, B](fe: SI1 => (SO1, E1))(to: A =?> B, from: B =?> A): Grammar[SI1, SO1, E1, B] =
+      MapES[SI1, SO1, E1, A, B](self, fe, to.lift, from.lift)
 
-    final def filter[SI1 <: SI, SO1 >: SO, E1 >: E](es: SI1 => (SO1, E1))(f: A => Boolean): Grammar[SI1, SO1, E1, A] =
-      MapES[SI1, SO1, E1, A, A](self, es, Some(_).filter(f), Some(_).filter(f))
+    final def filterS[SI1 <: SI, SO1 >: SO, E1 >: E](fe: SI1 => (SO1, E1))(f: A => Boolean): Grammar[SI1, SO1, E1, A] =
+      MapES[SI1, SO1, E1, A, A](self, fe, Some(_).filter(f), Some(_).filter(f))
 
     final def zip[SI1 <: SI, SO1 >: SO, E1 >: E, B](that: Grammar[SI1, SO1, E1, B]): Grammar[SI1, SO1, E1, A /\ B] =
       Zip(self, that)
@@ -76,7 +76,7 @@ trait ParsersModule {
     private[parserz] case class Tag[SI, SO, E, A](value: Grammar[SI, SO, E, A], tag: String) extends Grammar[SI, SO, E, A]
     private[parserz] case class Map[SI, SO, E, A, B](value: Grammar[SI, SO, E, A], to: A => E \/ B, from: B => E \/ A) extends Grammar[SI, SO, E, B]
     private[parserz] case class MapS[SI, SO, E, A, B](value: Grammar[SI, SO, E, A], to: (SI, A) => (SO, E \/ B), from: (SI, B) => (SO, E \/ A)) extends Grammar[SI, SO, E, B]
-    private[parserz] case class MapES[SI, SO, E, A, B](value: Grammar[SI, SO, E, A], es: SI => (SO, E), to: A => Option[B], from: B => Option[A]) extends Grammar[SI, SO, E, B]
+    private[parserz] case class MapES[SI, SO, E, A, B](value: Grammar[SI, SO, E, A], fe: SI => (SO, E), to: A => Option[B], from: B => Option[A]) extends Grammar[SI, SO, E, B]
     private[parserz] case class Zip[SI, SO, E, A, B](left: Grammar[SI, SO, E, A], right: Grammar[SI, SO, E, B]) extends Grammar[SI, SO, E, A /\ B]
     private[parserz] case class Alt[SI, SO, E, A, B](left: Grammar[SI, SO, E, A], right: Grammar[SI, SO, E, B]) extends Grammar[SI, SO, E, A \/ B]
     private[parserz] case class Rep[SI, SO, E, A](value: Grammar[SI, SO, E, A]) extends Grammar[SI, SO, E, List[A]]
@@ -92,8 +92,8 @@ trait ParsersModule {
     final def fail[E, A](e: E): Grammar[Any, Nothing, E, A] =
       unit.mapPartial(e)(PartialFunction.empty, PartialFunction.empty)
 
-    final def fail[SI, SO, E, A](es: SI => (SO, E)): Grammar[SI, SO, E, A] =
-      unit.mapPartial(es)(PartialFunction.empty, PartialFunction.empty)
+    final def fail[SI, SO, E, A](fe: SI => (SO, E)): Grammar[SI, SO, E, A] =
+      unit.mapPartialS(fe)(PartialFunction.empty, PartialFunction.empty)
 
     final def consumeStatefully[SI, SO, E, A](
       to: (SI, Input) => (SO, E \/ (Input, A)),
@@ -129,11 +129,11 @@ trait ParsersModule {
     private def asEither[E, A, B](e: E)(f: A => Option[B]): A => E \/ B =
       f(_).map(Right(_)).getOrElse(Left(e))
 
-    private def asEither[SI, SO, E, A, B](es: SI => (SO, E))(f: ((SI, A)) => Option[(SO, B)]): (SI, A) => (SO, E \/ B) =
+    private def asEither[SI, SO, E, A, B](fe: SI => (SO, E))(f: ((SI, A)) => Option[(SO, B)]): (SI, A) => (SO, E \/ B) =
       (si, a) =>
         f((si, a))
           .map { case (so, b) => so -> Right(b) }
-          .getOrElse { val (so, e1) = es(si); so -> Left(e1) }
+          .getOrElse { val (so, e1) = fe(si); so -> Left(e1) }
   }
 
   trait GrammarSyntax {
