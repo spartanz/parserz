@@ -49,12 +49,20 @@ trait ParsersModule {
     final def zip[SI1 <: SI, SO1 >: SO, E1 >: E, B](that: Grammar[SI1, SO1, E1, B]): Grammar[SI1, SO1, E1, A /\ B] =
       Zip(self, that)
 
+    final def zipL[SI1 <: SI, SO1 >: SO, E1 >: E, B](that: (Grammar[SI1, SO1, E1, B], B)): Grammar[SI1, SO1, E1, A] =
+      self.zip(that._1).map(_._1, (_, that._2))
+
+    final def zipR[SI1 <: SI, SO1 >: SO, E1 >: E, B](that: (A, Grammar[SI1, SO1, E1, B])): Grammar[SI1, SO1, E1, B] =
+      self.zip(that._2).map(_._2, (that._1, _))
+
     final def alt[SI1 <: SI, SO1 >: SO, E1 >: E, B](that: Grammar[SI1, SO1, E1, B]): Grammar[SI1, SO1, E1, A \/ B] =
       Alt(self, that)
 
     final def ∘ [B](to: A => B, from: B => A): Grammar[SI, SO, E, B] = map(to, from)
 
     final def ~ [SI1 <: SI, SO1 >: SO, E1 >: E, B](that: Grammar[SI1, SO1, E1, B]): Grammar[SI1, SO1, E1, A /\ B] = self.zip(that)
+
+    final def <~ [SI1 <: SI, SO1 >: SO, E1 >: E, B](that: (B, Grammar[SI1, SO1, E1, B])): Grammar[SI1, SO1, E1, A] = self.zipL(that.swap)
 
     final def | [SI1 <: SI, SO1 >: SO, E1 >: E, B](that: Grammar[SI1, SO1, E1, B]): Grammar[SI1, SO1, E1, A \/ B] = self.alt(that)
 
@@ -138,9 +146,15 @@ trait ParsersModule {
 
   trait GrammarSyntax {
 
-    implicit final class ToGrammarOps(self: String) {
+    implicit final class ToGrammarOps1(self: String) {
 
       def @@ [SI, SO, E, A](g: Grammar[SI, SO, E, A]): Grammar[SI, SO, E, A] = g @@ self
+    }
+
+    implicit final class ToZipOps1[SI, SO, E, A, B](self: (Grammar[SI, SO, E, A], A)) {
+
+      def ~> [SI1 <: SI, SO1 >: SO, E1 >: E](that: Grammar[SI1, SO1, E1, B]): Grammar[SI1, SO1, E1, B] =
+        self._1.zipR((self._2, that))
     }
 
     implicit final class ToFoldOps1[SI, SO, E, A, B](self: Grammar[SI, SO, E, (A, List[(B, A)])]) {

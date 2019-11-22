@@ -26,6 +26,10 @@ class LanguageExampleSpec extends Specification {
     type E    = String
     type G[A] = Grammar[S, S, E, A]
 
+    private val `(` = '('
+    private val `)` = ')'
+    private val `,` = ','
+
     val char: G[Char] = "char" @@ consumeOption("expected: char")(
       s => s.headOption.map(s.drop(1) -> _),
       { case (s, c) => Some(s + c.toString) }
@@ -35,9 +39,9 @@ class LanguageExampleSpec extends Specification {
     val digit: G[Digit]   = char.filter("expected: digit")(_.isDigit).tag("digit")
     val alpha: G[Char]    = char.filter("expected: alphabetical")(_.isLetter).tag("alpha")
     val symbolic: G[Char] = char.filter("expected: special")(c => Set('+', '-').contains(c)).tag("symbolic")
-    val comma: G[Char]    = char.filter("expected: comma")(_ == ',').tag(",")
-    val paren1: G[Char]   = char.filter("expected: open paren")(_ == '(').tag("(")
-    val paren2: G[Char]   = char.filter("expected: close paren")(_ == ')').tag(")")
+    val comma: G[Char]    = char.filter("expected: comma")(_ == `,`).tag(",")
+    val paren1: G[Char]   = char.filter("expected: open paren")(_ == `(`).tag("(")
+    val paren2: G[Char]   = char.filter("expected: close paren")(_ == `)`).tag(")")
 
     val input: G[::[Digit]] = "input" @@ digit.rep1
     val value: G[Val]       = "value" @@ input.map(Val, _.value)
@@ -55,17 +59,17 @@ class LanguageExampleSpec extends Specification {
       }
     )
 
-    val args: G[List[Expr]] = "arguments" @@ ((expr ~ (comma ~ expr).rep) | succeed(Nil)).map({
-      case Left((e1, en)) => e1 :: en.map(_._2)
+    val args: G[List[Expr]] = "arguments" @@ ((expr ~ ((comma, `,`) ~> expr).rep) | succeed(Nil)).map({
+      case Left((e1, en)) => e1 :: en
       case Right(_)       => Nil
     }, {
       case Nil      => Right(Nil)
-      case e1 :: en => Left((e1, en.map((',', _))))
+      case e1 :: en => Left((e1, en))
     })
 
-    val fun: G[Fun] = "function" @@ (name ~ paren1 ~ args ~ paren2).map(
-      { case (((name, _), exp), _) => Fun(name, exp) },
-      { case Fun(name, exp)        => (((name, '('), exp), ')') }
+    val fun: G[Fun] = "function" @@ (name ~ ((paren1, `(`) ~> args <~ ((`)`, paren2)))).map(
+      { case (name, exp)    => Fun(name, exp) },
+      { case Fun(name, exp) => (name, exp) }
     )
 
     lazy val expr: G[Expr] = "expr" @@ delay {
