@@ -157,19 +157,19 @@ trait ParsersModule {
         self._1.zipR((self._2, that))
     }
 
-    implicit final class ToFoldOps1[SI, SO, E, A, B](self: Grammar[SI, SO, E, (A, List[(B, A)])]) {
+    implicit final class ToFoldOps1[SI, SO, E, A, B](self: Grammar[SI, SO, E, (A, List[B])]) {
 
-      def foldLeft(fold: (A, (B, A)) => A, unfold: A =?> (A, (B, A))): Grammar[SI, SO, E, A] =
+      def foldLeft(fold: (A, B) => A, unfold: A =?> (A, B)): Grammar[SI, SO, E, A] =
         self.map(
           arg => {
             arg._2.foldLeft(arg._1)(fold)
           },
           arg => {
             @tailrec
-            def rec(acc: List[(B, A)])(a: A): (A, List[(B, A)]) =
+            def rec(acc: List[B])(a: A): (A, List[B]) =
               unfold.lift(a) match {
-                case None               => (a, acc)
-                case Some((a1, (b, a))) => rec((b, a) :: acc)(a1)
+                case None          => (a, acc)
+                case Some((a1, b)) => rec(b :: acc)(a1)
               }
             rec(Nil)(arg)
           }
