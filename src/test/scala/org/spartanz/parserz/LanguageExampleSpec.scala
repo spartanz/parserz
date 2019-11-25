@@ -7,9 +7,9 @@ class LanguageExampleSpec extends Specification {
 
   object Syntax {
 
-    sealed trait Expr
-    case class Val(value: ::[Char])                extends Expr
-    case class Fun(name: String, args: List[Expr]) extends Expr
+    sealed trait Exp
+    case class Val(value: ::[Char])               extends Exp
+    case class Fun(name: String, args: List[Exp]) extends Exp
   }
 
   object Example {
@@ -59,7 +59,7 @@ class LanguageExampleSpec extends Specification {
       }
     )
 
-    val args: G[List[Expr]] = "arguments" @@ ((expr ~ ((comma, `,`) ~> expr).rep) | succeed(Nil)).map({
+    val args: G[List[Exp]] = "arguments" @@ ((expr ~ ((comma, `,`) ~> expr).rep) | succeed(Nil)).map({
       case Left((e1, en)) => e1 :: en
       case Right(_)       => Nil
     }, {
@@ -72,7 +72,7 @@ class LanguageExampleSpec extends Specification {
       { case Fun(name, exp) => (name, exp) }
     )
 
-    lazy val expr: G[Expr] = "expr" @@ delay {
+    lazy val expr: G[Exp] = "expr" @@ delay {
       (fun | value).map({
         case Left(f)  => f
         case Right(v) => v
@@ -82,9 +82,9 @@ class LanguageExampleSpec extends Specification {
       })
     }
 
-    val parser: (Unit, Input) => (Unit, String \/ (Input, Expr))  = Parser.parser(expr)
-    val printer: (Unit, (Input, Expr)) => (Unit, String \/ Input) = Parser.printer(expr)
-    val description: List[String]                                 = Parser.bnf(expr)
+    val parser: (Unit, Input) => (Unit, String \/ (Input, Exp))  = Parser.parser(expr)
+    val printer: (Unit, (Input, Exp)) => (Unit, String \/ Input) = Parser.printer(expr)
+    val description: List[String]                                = Parser.bnf(expr)
   }
 
   import Syntax._
@@ -92,10 +92,10 @@ class LanguageExampleSpec extends Specification {
   private def parse(s: String)  = Example.parser((), s)._2
   private def parse0(s: String) = parse(s).toOption.get._2
 
-  private def print(e: Expr)  = Example.printer((), ("", e))._2
-  private def print0(e: Expr) = print(e).toOption.get
+  private def print(e: Exp)  = Example.printer((), ("", e))._2
+  private def print0(e: Exp) = print(e).toOption.get
 
-  private def assert(s: String, e: Expr): MatchResult[Any] = {
+  private def assert(s: String, e: Exp): MatchResult[Any] = {
     val parsed  = parse0(s)
     val printed = print0(parsed)
     (parsed must_=== e).and(printed must_=== s)

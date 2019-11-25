@@ -3,7 +3,7 @@ package org.spartanz.parserz
 import org.specs2.matcher.MatchResult
 import org.specs2.mutable.Specification
 
-class ClassicExampleSpec extends Specification {
+object ClassicExampleSpec {
 
   object Syntax {
     sealed trait Expression
@@ -22,6 +22,7 @@ class ClassicExampleSpec extends Specification {
       override type Input = String
     }
 
+    import Parser.Expr._
     import Parser.Grammar._
     import Parser._
     import Syntax._
@@ -39,8 +40,8 @@ class ClassicExampleSpec extends Specification {
     )
 
     val digit: G[Char]  = char.filter("expected: digit")(_.isDigit).tag("digit")
-    val paren1: G[Char] = char.filter("expected: open paren")(_ == `(`).tag("(")
-    val paren2: G[Char] = char.filter("expected: close paren")(_ == `)`).tag(")")
+    val paren1: G[Char] = char.filterExpr("expected: open paren")(===(`(`))
+    val paren2: G[Char] = char.filterExpr("expected: close paren")(===(`)`))
 
     val plus: G[Operator] = "+" @@ char.mapPartial("expected: '+'")(
       { case '+' => Add },
@@ -88,6 +89,10 @@ class ClassicExampleSpec extends Specification {
     val printer: (S, (Input, Expression)) => (S, E \/ Input) = Parser.printer[S, E, Expression](addition)
   }
 
+}
+
+class ClassicExampleSpec extends Specification {
+  import ClassicExampleSpec._
   import Syntax._
 
   private def parse(s: String)  = Example.parser((), s)._2
@@ -185,9 +190,7 @@ class ClassicExampleSpec extends Specification {
           |<integer> ::= NEL(<digit>)
           |<Constant> ::= <integer>
           |<*> ::= <char>
-          |<(> ::= <char>
-          |<)> ::= <char>
-          |<Multiplier> ::= (<(> <Addition> <)> | <Constant>)
+          |<Multiplier> ::= ("(" <Addition> ")" | <Constant>)
           |<Multiplication> ::= <Constant> List(<*> <Multiplier>)
           |<+> ::= <char>
           |<Addition> ::= <Multiplication> List(<+> <Multiplication>)
