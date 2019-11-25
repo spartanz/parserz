@@ -36,6 +36,9 @@ class StatefulExampleSpec extends Specification {
     type E    = String
     type G[A] = Grammar[S, S, E, A]
 
+    private val `(` = '('
+    private val `)` = ')'
+
     val char: G[Char] = "char" @@ consumeStatefullyOption("expected: char")(
       {
         case (s, i) =>
@@ -57,8 +60,8 @@ class StatefulExampleSpec extends Specification {
     )
 
     val digit: G[Char]  = char.filterS(State.acc("expected: digit"))(_.isDigit).tag("digit")
-    val paren1: G[Char] = char.filterS(State.acc("expected: open paren"))(_ == '(').tag("(")
-    val paren2: G[Char] = char.filterS(State.acc("expected: close paren"))(_ == ')').tag(")")
+    val paren1: G[Char] = char.filterS(State.acc("expected: open paren"))(_ == `(`).tag("(")
+    val paren2: G[Char] = char.filterS(State.acc("expected: close paren"))(_ == `)`).tag(")")
 
     val plus: G[Operator] = "+" @@ char.mapPartialS(State.acc("expected: '+'"))(
       { case '+' => Add },
@@ -81,11 +84,11 @@ class StatefulExampleSpec extends Specification {
       { case Constant(i) => i }
     )
 
-    val multiplier: G[Expression] = "Multiplier" @@ ((paren1 ~ addition ~ paren2) | constant).mapStatefully({
-      case (s, Left(((_, exp), _))) => (s, SubExpr(exp))
-      case (s, Right(exp))          => (s, exp)
+    val multiplier: G[Expression] = "Multiplier" @@ (((paren1, `(`) ~> addition <~ ((`)`, paren2))) | constant).mapStatefully({
+      case (s, Left(exp))  => (s, SubExpr(exp))
+      case (s, Right(exp)) => (s, exp)
     }, {
-      case (s, SubExpr(exp)) => (s, Left((('(', exp), ')')))
+      case (s, SubExpr(exp)) => (s, Left(exp))
       case (s, exp)          => (s, Right(exp))
     })
 
@@ -103,7 +106,7 @@ class StatefulExampleSpec extends Specification {
       )
     }
 
-    val expr: G[Expression] = (addition ~ eof).map(_._1, (_, ()))
+    val expr: G[Expression] = addition <~ (((), eof))
 
     val parser: (S, Input) => (S, E \/ (Input, Expression))  = Parser.parser[S, E, Expression](expr)
     val printer: (S, (Input, Expression)) => (S, E \/ Input) = Parser.printer[S, E, Expression](expr)

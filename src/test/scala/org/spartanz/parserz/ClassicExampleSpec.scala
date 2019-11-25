@@ -22,58 +22,62 @@ class ClassicExampleSpec extends Specification {
       override type Input = String
     }
 
-    type S = Unit
-    type E = String
-
     import Parser.Grammar._
     import Parser._
     import Syntax._
 
-    val char: Grammar[Any, Nothing, E, Char] = "char" @@ consumeOption("expected: char")(
+    type S    = Unit
+    type E    = String
+    type G[A] = Grammar[Any, Nothing, E, A]
+
+    private val `(` = '('
+    private val `)` = ')'
+
+    val char: G[Char] = "char" @@ consumeOption("expected: char")(
       s => s.headOption.map(s.drop(1) -> _),
       { case (s, c) => Some(s + c.toString) }
     )
 
-    val digit: Grammar[Any, Nothing, E, Char]  = char.filter("expected: digit")(_.isDigit).tag("digit")
-    val paren1: Grammar[Any, Nothing, E, Char] = char.filter("expected: open paren")(_ == '(').tag("(")
-    val paren2: Grammar[Any, Nothing, E, Char] = char.filter("expected: close paren")(_ == ')').tag(")")
+    val digit: G[Char]  = char.filter("expected: digit")(_.isDigit).tag("digit")
+    val paren1: G[Char] = char.filter("expected: open paren")(_ == `(`).tag("(")
+    val paren2: G[Char] = char.filter("expected: close paren")(_ == `)`).tag(")")
 
-    val plus: Grammar[Any, Nothing, E, Operator] = "+" @@ char.mapPartial("expected: '+'")(
+    val plus: G[Operator] = "+" @@ char.mapPartial("expected: '+'")(
       { case '+' => Add },
       { case Add => '+' }
     )
 
-    val star: Grammar[Any, Nothing, E, Operator] = "*" @@ char.mapOption("expected: '*'")(
+    val star: G[Operator] = "*" @@ char.mapOption("expected: '*'")(
       { case '*' => Some(Mul); case _ => None },
       { case Mul => Some('*'); case _ => None }
     )
 
-    val integer: Grammar[Any, Nothing, E, Int] = "integer" @@ digit.rep1.map(
+    val integer: G[Int] = "integer" @@ digit.rep1.map(
       chars => chars.mkString.toInt,
       int => { val chars = int.toString.toList; ::(chars.head, chars.tail) }
     )
 
-    val constant: Grammar[Any, Nothing, E, Expression] = "Constant" @@ integer.mapPartial("expected: Constant")(
+    val constant: G[Expression] = "Constant" @@ integer.mapPartial("expected: Constant")(
       { case i           => Constant(i) },
       { case Constant(i) => i }
     )
 
-    val multiplier: Grammar[Any, Nothing, E, Expression] = "Multiplier" @@ ((paren1 ~ addition ~ paren2) | constant).map({
-      case Left(((_, exp), _)) => SubExpr(exp)
-      case Right(exp)          => exp
+    val multiplier: G[Expression] = "Multiplier" @@ (((paren1, `(`) ~> addition <~ ((`)`, paren2))) | constant).map({
+      case Left(exp)  => SubExpr(exp)
+      case Right(exp) => exp
     }, {
-      case SubExpr(exp) => Left((('(', exp), ')'))
+      case SubExpr(exp) => Left(exp)
       case exp          => Right(exp)
     })
 
-    val multiplication: Grammar[Any, Nothing, E, Expression] = "Multiplication" @@ {
+    val multiplication: G[Expression] = "Multiplication" @@ {
       (constant ~ (star ~ multiplier).rep).foldLeft(
         { case (e1, (_, e2))          => Operation(e1, Mul, e2) },
         { case Operation(e1, Mul, e2) => (e1, (Mul, e2)) }
       )
     }
 
-    lazy val addition: Grammar[Any, Nothing, E, Expression] = "Addition" @@ delay {
+    lazy val addition: G[Expression] = "Addition" @@ delay {
       (multiplication ~ (plus ~ multiplication).rep).foldLeft(
         { case (e1, (_, e2))          => Operation(e1, Add, e2) },
         { case Operation(e1, Add, e2) => (e1, (Add, e2)) }
