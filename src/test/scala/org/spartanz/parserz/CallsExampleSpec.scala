@@ -3,7 +3,7 @@ package org.spartanz.parserz
 import org.specs2.matcher.MatchResult
 import org.specs2.mutable.Specification
 
-class CallsExampleSpec extends Specification {
+object CallsExampleSpec {
 
   object Example {
 
@@ -11,12 +11,17 @@ class CallsExampleSpec extends Specification {
       override type Input = List[Char]
     }
 
-    import MyParser.Grammar._
     import MyParser._
+    import MyParser.Expr._
+    import MyParser.Grammar._
 
     type G[A] = Grammar[Any, Nothing, String, A]
 
     case class Call(name: ::[Char], args: List[Call])
+
+    private val `(` = '('
+    private val `)` = ')'
+    private val `,` = ','
 
     val char: G[Char] = "char" @@ consume({
       case c :: cs => Right(cs -> c)
@@ -26,9 +31,9 @@ class CallsExampleSpec extends Specification {
     })
 
     val alpha: G[Char]  = char.filter("expected: alphabetical")(_.isLetter).tag("alpha")
-    val comma: G[Char]  = char.filter("expected: comma")(_ == ',').tag("comma")
-    val paren1: G[Char] = char.filter("expected: open paren")(_ == '(').tag("open paren")
-    val paren2: G[Char] = char.filter("expected: close paren")(_ == ')').tag("close paren")
+    val comma: G[Char]  = char.filterExpr("expected: comma")(===(`,`)).tag("comma")
+    val paren1: G[Char] = char.filterExpr("expected: open paren")(===(`(`)).tag("open paren")
+    val paren2: G[Char] = char.filterExpr("expected: close paren")(===(`)`)).tag("close paren")
 
     val args: G[List[Call]] = "args" @@ ((call ~ (comma ~ call).rep) | succeed(Nil)).map({
       case Left((e1, en)) => e1 :: en.map(_._2)
@@ -49,7 +54,10 @@ class CallsExampleSpec extends Specification {
     val printer: (Unit, (Input, Call)) => (Unit, String \/ Input) = MyParser.printer(call)
     val description: List[String]                                 = MyParser.bnf(call)
   }
+}
 
+class CallsExampleSpec extends Specification {
+  import CallsExampleSpec._
   import Example.Call
 
   private def parse(s: String) = Example.parser((), s.toList)._2.toOption.get._2
@@ -77,10 +85,10 @@ class CallsExampleSpec extends Specification {
     Example.description.mkString("\n", "\n", "\n") must_===
       """
         |<alpha> ::= <char>
-        |<open paren> ::= <char>
-        |<comma> ::= <char>
+        |<open paren> ::= "("
+        |<comma> ::= ","
         |<args> ::= (<call> List(<comma> <call>) | )
-        |<close paren> ::= <char>
+        |<close paren> ::= ")"
         |<call> ::= NEL(<alpha>) <open paren> <args> <close paren>
         |""".stripMargin
   }

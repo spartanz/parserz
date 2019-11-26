@@ -3,7 +3,7 @@ package org.spartanz.parserz
 import org.specs2.matcher.MatchResult
 import org.specs2.mutable.Specification
 
-class LanguageExampleSpec extends Specification {
+object LanguageExampleSpec {
 
   object Syntax {
 
@@ -18,9 +18,10 @@ class LanguageExampleSpec extends Specification {
       override type Input = String
     }
 
-    import Parser.Grammar._
-    import Parser._
     import Syntax._
+    import Parser._
+    import Parser.Expr._
+    import Parser.Grammar._
 
     type S    = Unit
     type E    = String
@@ -39,9 +40,9 @@ class LanguageExampleSpec extends Specification {
     val digit: G[Digit]   = char.filter("expected: digit")(_.isDigit).tag("digit")
     val alpha: G[Char]    = char.filter("expected: alphabetical")(_.isLetter).tag("alpha")
     val symbolic: G[Char] = char.filter("expected: special")(c => Set('+', '-').contains(c)).tag("symbolic")
-    val comma: G[Char]    = char.filter("expected: comma")(_ == `,`).tag(",")
-    val paren1: G[Char]   = char.filter("expected: open paren")(_ == `(`).tag("(")
-    val paren2: G[Char]   = char.filter("expected: close paren")(_ == `)`).tag(")")
+    val comma: G[Char]    = char.filterExpr("expected: comma")(===(`,`))
+    val paren1: G[Char]   = char.filterExpr("expected: open paren")(===(`(`))
+    val paren2: G[Char]   = char.filterExpr("expected: close paren")(===(`)`))
 
     val input: G[::[Digit]] = "input" @@ digit.rep1
     val value: G[Val]       = "value" @@ input.map(Val, _.value)
@@ -86,7 +87,10 @@ class LanguageExampleSpec extends Specification {
     val printer: (Unit, (Input, Exp)) => (Unit, String \/ Input) = Parser.printer(expr)
     val description: List[String]                                = Parser.bnf(expr)
   }
+}
 
+class LanguageExampleSpec extends Specification {
+  import LanguageExampleSpec._
   import Syntax._
 
   private def parse(s: String)  = Example.parser((), s)._2
@@ -147,11 +151,8 @@ class LanguageExampleSpec extends Specification {
         |<symbolic> ::= <char>
         |<alpha> ::= <char>
         |<name> ::= (<symbolic> | NEL(<alpha>))
-        |<(> ::= <char>
-        |<,> ::= <char>
-        |<arguments> ::= (<expr> List(<,> <expr>) | )
-        |<)> ::= <char>
-        |<function> ::= <name> <(> <arguments> <)>
+        |<arguments> ::= (<expr> List("," <expr>) | )
+        |<function> ::= <name> "(" <arguments> ")"
         |<digit> ::= <char>
         |<input> ::= NEL(<digit>)
         |<value> ::= <input>
