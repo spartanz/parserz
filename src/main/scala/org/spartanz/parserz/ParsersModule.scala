@@ -377,7 +377,7 @@ trait ParsersModule extends ExprModule {
         case Grammar.Map(value, _, _)      => tagOrExpand(value)
         case Grammar.MapS(value, _, _)     => tagOrExpand(value)
         case Grammar.MapES(value, _, _, _) => tagOrExpand(value)
-        case Grammar.Filter(_, _, expr)    => exprBNF(expr)
+        case Grammar.Filter(v, _, expr)    => Some(exprBNF(expr)).filter(_.nonEmpty).getOrElse(tagOrExpand(v))
         case Grammar.Zip(left, right)      => tagOrExpand(left) + " " + tagOrExpand(right)
         case Grammar.Alt(left, right)      => "(" + tagOrExpand(left) + " | " + tagOrExpand(right) + ")"
         case Grammar.Rep(value)            => "List(" + tagOrExpand(value) + ")"

@@ -38,7 +38,7 @@ object LanguageExampleSpec {
 
     type Digit = Char
     val digit: G[Digit]   = char.filter("expected: digit")(_.isDigit).tag("digit")
-    val alpha: G[Char]    = char.filter("expected: alphabetical")(_.isLetter).tag("alpha")
+    val alpha: G[Char]    = char.filterExpr("expected: alphabetical")(cond(_.isLetter)).tag("alpha")
     val symbolic: G[Char] = char.filterExpr("expected: special")(in('+', '-')).tag("symbolic")
     val comma: G[Char]    = char.filterExpr("expected: comma")(===(`,`))
     val paren1: G[Char]   = char.filterExpr("expected: open paren")(===(`(`))
