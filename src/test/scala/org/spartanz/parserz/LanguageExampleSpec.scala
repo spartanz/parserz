@@ -39,7 +39,7 @@ object LanguageExampleSpec {
     type Digit = Char
     val digit: G[Digit]   = char.filter("expected: digit")(_.isDigit).tag("digit")
     val alpha: G[Char]    = char.filter("expected: alphabetical")(_.isLetter).tag("alpha")
-    val symbolic: G[Char] = char.filter("expected: special")(c => Set('+', '-').contains(c)).tag("symbolic")
+    val symbolic: G[Char] = char.filterExpr("expected: special")(in('+', '-')).tag("symbolic")
     val comma: G[Char]    = char.filterExpr("expected: comma")(===(`,`))
     val paren1: G[Char]   = char.filterExpr("expected: open paren")(===(`(`))
     val paren2: G[Char]   = char.filterExpr("expected: close paren")(===(`)`))
@@ -148,7 +148,7 @@ class LanguageExampleSpec extends Specification {
   "bnf" in {
     Example.description.mkString("\n", "\n", "\n") must_===
       """
-        |<symbolic> ::= <char>
+        |<symbolic> ::= ( "+" | "-" )
         |<alpha> ::= <char>
         |<name> ::= (<symbolic> | NEL(<alpha>))
         |<arguments> ::= (<expr> List("," <expr>) | )
