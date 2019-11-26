@@ -21,6 +21,7 @@ class SimplestExampleSpec extends Specification {
     type E = String
 
     import Parser.Grammar._
+    import Parser.Expr._
     import Parser._
     import Syntax._
 
@@ -29,8 +30,8 @@ class SimplestExampleSpec extends Specification {
       { case (s, c) => Some(s + c.toString) }
     )
 
-    val digit: Grammar[Any, Nothing, E, Char]        = char.filter("expected: digit")(_.isDigit)
-    val plus: Grammar[Any, Nothing, E, Char]         = char.filter("expected: '+'")(_ == '+')
+    val digit: Grammar[Any, Nothing, E, Char]        = char.filter("expected: digit")(cond(_.isDigit))
+    val plus: Grammar[Any, Nothing, E, Char]         = char.filter("expected: '+'")(cond(_ == '+'))
     val integer: Grammar[Any, Nothing, E, Int]       = digit ∘ (_.toString.toInt, _.toString.head)
     val constant: Grammar[Any, Nothing, E, Constant] = integer ∘ (Constant, _.value)
 

@@ -30,10 +30,10 @@ object CallsExampleSpec {
       case (cs, c) => Right(c :: cs)
     })
 
-    val alpha: G[Char]  = char.filter("expected: alphabetical")(_.isLetter).tag("alpha")
-    val comma: G[Char]  = char.filterExpr("expected: comma")(===(`,`)).tag("comma")
-    val paren1: G[Char] = char.filterExpr("expected: open paren")(===(`(`)).tag("open paren")
-    val paren2: G[Char] = char.filterExpr("expected: close paren")(===(`)`)).tag("close paren")
+    val alpha: G[Char]  = char.filter("expected: alphabetical")(cond(_.isLetter)).tag("alpha")
+    val comma: G[Char]  = char.filter("expected: comma")(===(`,`)).tag("comma")
+    val paren1: G[Char] = char.filter("expected: open paren")(===(`(`)).tag("open paren")
+    val paren2: G[Char] = char.filter("expected: close paren")(===(`)`)).tag("close paren")
 
     val args: G[List[Call]] = "args" @@ ((call ~ (comma ~ call).rep) | succeed(Nil)).map({
       case Left((e1, en)) => e1 :: en.map(_._2)

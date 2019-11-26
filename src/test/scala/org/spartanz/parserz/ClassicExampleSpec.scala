@@ -39,9 +39,9 @@ object ClassicExampleSpec {
       { case (s, c) => Some(s + c.toString) }
     )
 
-    val digit: G[Char]  = char.filter("expected: digit")(_.isDigit).tag("digit")
-    val paren1: G[Char] = char.filterExpr("expected: open paren")(===(`(`))
-    val paren2: G[Char] = char.filterExpr("expected: close paren")(===(`)`))
+    val digit: G[Char]  = char.filter("expected: digit")(cond(_.isDigit)).tag("digit")
+    val paren1: G[Char] = char.filter("expected: open paren")(===(`(`))
+    val paren2: G[Char] = char.filter("expected: close paren")(===(`)`))
 
     val plus: G[Operator] = "+" @@ char.mapPartial("expected: '+'")(
       { case '+' => Add },

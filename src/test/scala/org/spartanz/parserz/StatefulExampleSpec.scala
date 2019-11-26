@@ -3,7 +3,7 @@ package org.spartanz.parserz
 import org.specs2.matcher.MatchResult
 import org.specs2.mutable.Specification
 
-class StatefulExampleSpec extends Specification {
+object StatefulExampleSpec {
 
   object Syntax {
     sealed trait Expression
@@ -23,6 +23,7 @@ class StatefulExampleSpec extends Specification {
     }
 
     import Parser.Grammar._
+    import Parser.Expr._
     import Parser._
     import Syntax._
 
@@ -59,9 +60,9 @@ class StatefulExampleSpec extends Specification {
       { case (s, (i, _)) => (s, Right(i)) }
     )
 
-    val digit: G[Char]  = char.filterS(State.acc("expected: digit"))(_.isDigit).tag("digit")
-    val paren1: G[Char] = char.filterS(State.acc("expected: open paren"))(_ == `(`).tag("(")
-    val paren2: G[Char] = char.filterS(State.acc("expected: close paren"))(_ == `)`).tag(")")
+    val digit: G[Char]  = char.filterS(State.acc("expected: digit"))(cond(_.isDigit)).tag("digit")
+    val paren1: G[Char] = char.filterS(State.acc("expected: open paren"))(===(`(`))
+    val paren2: G[Char] = char.filterS(State.acc("expected: close paren"))(===(`)`))
 
     val plus: G[Operator] = "+" @@ char.mapPartialS(State.acc("expected: '+'"))(
       { case '+' => Add },
@@ -111,7 +112,10 @@ class StatefulExampleSpec extends Specification {
     val parser: (S, Input) => (S, E \/ (Input, Expression))  = Parser.parser[S, E, Expression](expr)
     val printer: (S, (Input, Expression)) => (S, E \/ Input) = Parser.printer[S, E, Expression](expr)
   }
+}
 
+class StatefulExampleSpec extends Specification {
+  import StatefulExampleSpec._
   import Example.State
   import Syntax._
 
@@ -176,9 +180,7 @@ class StatefulExampleSpec extends Specification {
         |<integer> ::= NEL(<digit>)
         |<Constant> ::= <integer>
         |<*> ::= <char>
-        |<(> ::= <char>
-        |<)> ::= <char>
-        |<Multiplier> ::= (<(> <Addition> <)> | <Constant>)
+        |<Multiplier> ::= ("(" <Addition> ")" | <Constant>)
         |<Multiplication> ::= <Constant> List(<*> <Multiplier>)
         |<+> ::= <char>
         |<Addition> ::= <Multiplication> List(<+> <Multiplication>)
