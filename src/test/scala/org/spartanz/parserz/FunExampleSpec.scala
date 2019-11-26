@@ -2,7 +2,7 @@ package org.spartanz.parserz
 
 import org.specs2.mutable.Specification
 
-class FunExampleSpec extends Specification {
+object FunExampleSpec {
 
   object Stateless {
 
@@ -14,31 +14,16 @@ class FunExampleSpec extends Specification {
     type E = String
 
     import Parser._
+    import Parser.Expr._
     import Parser.Grammar._
 
     val good: Grammar[Any, Nothing, Nothing, String] = succeed("🎁")
     val bad: Grammar[Any, Nothing, E, String]        = fail("🚫")
 
+    val badFiltered: Grammar[Any, Nothing, E, String] = bad.filterExpr("not good")(===("✅"))
+
     def parser[A](g: Grammar[Any, Nothing, E, A]): Input => E \/ (Input, A)    = Parser.parser[S, E, A](g)((), _)._2
     def printer[A](g: Grammar[Any, Nothing, E, A]): ((Input, A)) => E \/ Input = Parser.printer[S, E, A](g)((), _)._2
-  }
-
-  "Stateless parser" should {
-    import Stateless._
-
-    "-> generate value" in {
-      parser(good)("abc") must_=== Right(("abc", "🎁"))
-    }
-    "<- ignore value" in {
-      printer(good)("abc" -> "🎁") must_=== Right("abc")
-    }
-
-    "-> generate error" in {
-      parser(bad)("abc") must_=== Left("🚫")
-    }
-    "<- generate error" in {
-      printer(bad)("abc" -> "🎁") must_=== Left("🚫")
-    }
   }
 
   object Stateful {
@@ -68,8 +53,38 @@ class FunExampleSpec extends Specification {
     def parser[A](g: Grammar[S, S, E, A]): (S, Input) => (S, E \/ (Input, A))  = Parser.parser[S, E, A](g)
     def printer[A](g: Grammar[S, S, E, A]): (S, (Input, A)) => (S, E \/ Input) = Parser.printer[S, E, A](g)
   }
+}
+
+class FunExampleSpec extends Specification {
+
+  "Stateless parser" should {
+    import FunExampleSpec._
+    import Stateless._
+
+    "-> generate value" in {
+      parser(good)("abc") must_=== Right(("abc", "🎁"))
+    }
+    "<- ignore value" in {
+      printer(good)("abc" -> "🎁") must_=== Right("abc")
+    }
+
+    "-> generate error" in {
+      parser(bad)("abc") must_=== Left("🚫")
+    }
+    "<- generate error" in {
+      printer(bad)("abc" -> "🎁") must_=== Left("🚫")
+    }
+
+    "-> filter generated error" in {
+      parser(badFiltered)("abc") must_=== Left("🚫")
+    }
+    "<- filter generated error" in {
+      printer(badFiltered)("abc" -> "🎁") must_=== Left("not good")
+    }
+  }
 
   "Stateful parser" should {
+    import FunExampleSpec._
     import Stateful._
 
     "-> consume value (no state change)" in {
