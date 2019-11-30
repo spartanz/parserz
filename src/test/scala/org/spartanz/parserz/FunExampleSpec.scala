@@ -38,6 +38,7 @@ object FunExampleSpec {
     type E = String
 
     import Parser._
+    import Parser.Expr._
     import Parser.Grammar._
 
     val neutral: Grammar[Any, Nothing, E, Char] = consume(
@@ -46,6 +47,7 @@ object FunExampleSpec {
     )
 
     val bad: Grammar[S, S, E, String] = fail(s => (s + 1, "🚫🚫"))
+    val badFiltered: Grammar[S, S, E, String]  = bad.filterS((s: S) => (s + 1, "not good"))(===("✅"))
 
     val effectful: Grammar[S, S, E, Char] = consumeStatefully(
       { case (si, s)      => si + 1 -> s.headOption.map(s.drop(1) -> _).map(Right(_)).getOrElse(Left("empty")) },
@@ -128,6 +130,13 @@ class FunExampleSpec extends Specification {
 
     "-> always fail (with state change)" in {
       parser(bad)(0, "") must_=== ((1, Left("🚫🚫")))
+    }
+
+    "-> filter generated error" in {
+      parser(badFiltered)(0, "abc") must_=== ((1, Left("🚫🚫")))
+    }
+    "<- filter generated error" in {
+      printer(badFiltered)(0, "abc" -> "🎁") must_=== ((1, Left("not good")))
     }
 
     "-> consume value (with more state change)" in {
