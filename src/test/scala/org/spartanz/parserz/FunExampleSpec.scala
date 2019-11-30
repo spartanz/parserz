@@ -20,11 +20,12 @@ object FunExampleSpec {
     val good: Grammar[Any, Nothing, Nothing, String] = succeed("🎁")
     val bad: Grammar[Any, Nothing, E, String]        = fail("🚫")
 
-    val badFiltered: Grammar[Any, Nothing, E, String]  = bad.filter("not good")(===("✅"))
-    val badConfirmed: Grammar[Any, Nothing, E, String] = bad.filter("not good")(=!=("✅"))
+    val badFiltered: Grammar[Any, Nothing, E, String]  = bad.filter("not good")(===("✅")).tag("not suitable for bad")
+    val badConfirmed: Grammar[Any, Nothing, E, String] = bad.filter("not good")(=!=("✅")).tag("suitable for bad")
 
     def parser[A](g: Grammar[Any, Nothing, E, A]): Input => E \/ (Input, A)    = Parser.parser[S, E, A](g)((), _)._2
     def printer[A](g: Grammar[Any, Nothing, E, A]): ((Input, A)) => E \/ Input = Parser.printer[S, E, A](g)((), _)._2
+    def bnf[A](g: Grammar[Any, Nothing, E, A]): String                         = Parser.bnf(g).mkString("\n", "\n", "\n")
   }
 
   object Stateful {
@@ -82,12 +83,24 @@ class FunExampleSpec extends Specification {
     "<- filter generated error" in {
       printer(badFiltered)("abc" -> "🎁") must_=== Left("not good")
     }
+    "!! filter generated error" in {
+      bnf(badFiltered) must_===
+        """
+          |<not suitable for bad> ::= "✅"
+          |""".stripMargin
+    }
 
     "-> confirm generated error" in {
       parser(badConfirmed)("abc") must_=== Left("🚫")
     }
     "<- confirm generated error" in {
       printer(badConfirmed)("abc" -> "🎁") must_=== Left("🚫")
+    }
+    "!! confirm generated error" in {
+      bnf(badConfirmed) must_===
+        """
+          |<suitable for bad> ::= - "✅"
+          |""".stripMargin
     }
   }
 
