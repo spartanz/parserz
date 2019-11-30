@@ -46,8 +46,8 @@ object FunExampleSpec {
       { case (s, c) => Right(s + c.toString) }
     )
 
-    val bad: Grammar[S, S, E, String] = fail(s => (s + 1, "🚫🚫"))
-    val badFiltered: Grammar[S, S, E, String]  = bad.filterS((s: S) => (s + 1, "not good"))(===("✅"))
+    val bad: Grammar[S, S, E, String]         = fail(s => (s + 1, "🚫🚫"))
+    val badFiltered: Grammar[S, S, E, String] = bad.filterS((s: S) => (s + 1, "not good"))(===("✅"))
 
     val effectful: Grammar[S, S, E, Char] = consumeStatefully(
       { case (si, s)      => si + 1 -> s.headOption.map(s.drop(1) -> _).map(Right(_)).getOrElse(Left("empty")) },
