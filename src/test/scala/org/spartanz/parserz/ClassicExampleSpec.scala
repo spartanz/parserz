@@ -88,7 +88,6 @@ object ClassicExampleSpec {
     val parser: (S, Input) => (S, E \/ (Input, Expression))  = Parser.parser[S, E, Expression](addition)
     val printer: (S, (Input, Expression)) => (S, E \/ Input) = Parser.printer[S, E, Expression](addition)
   }
-
 }
 
 class ClassicExampleSpec extends Specification {
