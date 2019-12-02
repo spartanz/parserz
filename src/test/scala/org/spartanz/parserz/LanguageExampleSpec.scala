@@ -3,13 +3,13 @@ package org.spartanz.parserz
 import org.specs2.matcher.MatchResult
 import org.specs2.mutable.Specification
 
-class LanguageExampleSpec extends Specification {
+object LanguageExampleSpec {
 
   object Syntax {
 
-    sealed trait Expr
-    case class Val(value: ::[Char])                extends Expr
-    case class Fun(name: String, args: List[Expr]) extends Expr
+    sealed trait Exp
+    case class Val(value: ::[Char])               extends Exp
+    case class Fun(name: String, args: List[Exp]) extends Exp
   }
 
   object Example {
@@ -18,9 +18,10 @@ class LanguageExampleSpec extends Specification {
       override type Input = String
     }
 
-    import Parser.Grammar._
-    import Parser._
     import Syntax._
+    import Parser._
+    import Parser.Expr._
+    import Parser.Grammar._
 
     type S    = Unit
     type E    = String
@@ -36,12 +37,12 @@ class LanguageExampleSpec extends Specification {
     )
 
     type Digit = Char
-    val digit: G[Digit]   = char.filter("expected: digit")(_.isDigit).tag("digit")
-    val alpha: G[Char]    = char.filter("expected: alphabetical")(_.isLetter).tag("alpha")
-    val symbolic: G[Char] = char.filter("expected: special")(c => Set('+', '-').contains(c)).tag("symbolic")
-    val comma: G[Char]    = char.filter("expected: comma")(_ == `,`).tag(",")
-    val paren1: G[Char]   = char.filter("expected: open paren")(_ == `(`).tag("(")
-    val paren2: G[Char]   = char.filter("expected: close paren")(_ == `)`).tag(")")
+    val digit: G[Digit]   = char.filter("expected: digit")(cond(_.isDigit)).tag("digit")
+    val alpha: G[Char]    = char.filter("expected: alphabetical")(cond(_.isLetter)).tag("alpha")
+    val symbolic: G[Char] = char.filter("expected: special")(in('+', '-')).tag("symbolic")
+    val comma: G[Char]    = char.filter("expected: comma")(===(`,`))
+    val paren1: G[Char]   = char.filter("expected: open paren")(===(`(`))
+    val paren2: G[Char]   = char.filter("expected: close paren")(===(`)`))
 
     val input: G[::[Digit]] = "input" @@ digit.rep1
     val value: G[Val]       = "value" @@ input.map(Val, _.value)
@@ -59,7 +60,7 @@ class LanguageExampleSpec extends Specification {
       }
     )
 
-    val args: G[List[Expr]] = "arguments" @@ ((expr ~ ((comma, `,`) ~> expr).rep) | succeed(Nil)).map({
+    val args: G[List[Exp]] = "arguments" @@ ((expr ~ ((comma, `,`) ~> expr).rep) | succeed(Nil)).map({
       case Left((e1, en)) => e1 :: en
       case Right(_)       => Nil
     }, {
@@ -72,7 +73,7 @@ class LanguageExampleSpec extends Specification {
       { case Fun(name, exp) => (name, exp) }
     )
 
-    lazy val expr: G[Expr] = "expr" @@ delay {
+    lazy val expr: G[Exp] = "expr" @@ delay {
       (fun | value).map({
         case Left(f)  => f
         case Right(v) => v
@@ -82,20 +83,23 @@ class LanguageExampleSpec extends Specification {
       })
     }
 
-    val parser: (Unit, Input) => (Unit, String \/ (Input, Expr))  = Parser.parser(expr)
-    val printer: (Unit, (Input, Expr)) => (Unit, String \/ Input) = Parser.printer(expr)
-    val description: List[String]                                 = Parser.bnf(expr)
+    val parser: (Unit, Input) => (Unit, String \/ (Input, Exp))  = Parser.parser(expr)
+    val printer: (Unit, (Input, Exp)) => (Unit, String \/ Input) = Parser.printer(expr)
+    val description: List[String]                                = Parser.bnf(expr)
   }
+}
 
+class LanguageExampleSpec extends Specification {
+  import LanguageExampleSpec._
   import Syntax._
 
   private def parse(s: String)  = Example.parser((), s)._2
   private def parse0(s: String) = parse(s).toOption.get._2
 
-  private def print(e: Expr)  = Example.printer((), ("", e))._2
-  private def print0(e: Expr) = print(e).toOption.get
+  private def print(e: Exp)  = Example.printer((), ("", e))._2
+  private def print0(e: Exp) = print(e).toOption.get
 
-  private def assert(s: String, e: Expr): MatchResult[Any] = {
+  private def assert(s: String, e: Exp): MatchResult[Any] = {
     val parsed  = parse0(s)
     val printed = print0(parsed)
     (parsed must_=== e).and(printed must_=== s)
@@ -144,14 +148,11 @@ class LanguageExampleSpec extends Specification {
   "bnf" in {
     Example.description.mkString("\n", "\n", "\n") must_===
       """
-        |<symbolic> ::= <char>
+        |<symbolic> ::= ( "+" | "-" )
         |<alpha> ::= <char>
         |<name> ::= (<symbolic> | NEL(<alpha>))
-        |<(> ::= <char>
-        |<,> ::= <char>
-        |<arguments> ::= (<expr> List(<,> <expr>) | )
-        |<)> ::= <char>
-        |<function> ::= <name> <(> <arguments> <)>
+        |<arguments> ::= (<expr> List("," <expr>) | )
+        |<function> ::= <name> "(" <arguments> ")"
         |<digit> ::= <char>
         |<input> ::= NEL(<digit>)
         |<value> ::= <input>

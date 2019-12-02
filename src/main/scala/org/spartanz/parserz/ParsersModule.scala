@@ -3,7 +3,7 @@ package org.spartanz.parserz
 import scala.annotation.tailrec
 import scala.collection.mutable
 
-trait ParsersModule {
+trait ParsersModule extends ExprModule {
   type Input
 
   sealed abstract class Grammar[-SI, +SO, +E, A] {
@@ -20,8 +20,8 @@ trait ParsersModule {
     final def mapPartial[E1 >: E, B](e: E1)(to: A =?> B, from: B =?> A): Grammar[SI, SO, E1, B] =
       Map[SI, SO, E1, A, B](self, asEither(e)(to.lift), asEither(e)(from.lift))
 
-    final def filter[E1 >: E](e: E1)(f: A => Boolean): Grammar[SI, SO, E1, A] =
-      Map[SI, SO, E1, A, A](self, asEither(e)(Some(_).filter(f)), asEither(e)(Some(_).filter(f)))
+    final def filter[E1 >: E](e: E1)(f: Expr[A]): Grammar[SI, SO, E1, A] =
+      Filter[SI, SO, E1, A](self, e, f)
 
     final def mapStatefully[SI1 <: SI, SO1 >: SO, B](to: (SI1, A) => (SO1, B), from: (SI1, B) => (SO1, A)): Grammar[SI1, SO1, E, B] =
       MapS[SI1, SO1, E, A, B](
@@ -43,8 +43,8 @@ trait ParsersModule {
     final def mapPartialS[SI1 <: SI, SO1 >: SO, E1 >: E, B](fe: SI1 => (SO1, E1))(to: A =?> B, from: B =?> A): Grammar[SI1, SO1, E1, B] =
       MapES[SI1, SO1, E1, A, B](self, fe, to.lift, from.lift)
 
-    final def filterS[SI1 <: SI, SO1 >: SO, E1 >: E](fe: SI1 => (SO1, E1))(f: A => Boolean): Grammar[SI1, SO1, E1, A] =
-      MapES[SI1, SO1, E1, A, A](self, fe, Some(_).filter(f), Some(_).filter(f))
+    final def filterS[SI1 <: SI, SO1 >: SO, E1 >: E](fe: SI1 => (SO1, E1))(f: Expr[A]): Grammar[SI1, SO1, E1, A] =
+      FilterES[SI1, SO1, E1, A](self, fe, f)
 
     final def zip[SI1 <: SI, SO1 >: SO, E1 >: E, B](that: Grammar[SI1, SO1, E1, B]): Grammar[SI1, SO1, E1, A /\ B] =
       Zip(self, that)
@@ -85,6 +85,8 @@ trait ParsersModule {
     private[parserz] case class Map[SI, SO, E, A, B](value: Grammar[SI, SO, E, A], to: A => E \/ B, from: B => E \/ A) extends Grammar[SI, SO, E, B]
     private[parserz] case class MapS[SI, SO, E, A, B](value: Grammar[SI, SO, E, A], to: (SI, A) => (SO, E \/ B), from: (SI, B) => (SO, E \/ A)) extends Grammar[SI, SO, E, B]
     private[parserz] case class MapES[SI, SO, E, A, B](value: Grammar[SI, SO, E, A], fe: SI => (SO, E), to: A => Option[B], from: B => Option[A]) extends Grammar[SI, SO, E, B]
+    private[parserz] case class Filter[SI, SO, E, A](value: Grammar[SI, SO, E, A], e: E, filter: Expr[A]) extends Grammar[SI, SO, E, A]
+    private[parserz] case class FilterES[SI, SO, E, A](value: Grammar[SI, SO, E, A], fe: SI => (SO, E), filter: Expr[A]) extends Grammar[SI, SO, E, A]
     private[parserz] case class Zip[SI, SO, E, A, B](left: Grammar[SI, SO, E, A], right: Grammar[SI, SO, E, B]) extends Grammar[SI, SO, E, A /\ B]
     private[parserz] case class Alt[SI, SO, E, A, B](left: Grammar[SI, SO, E, A], right: Grammar[SI, SO, E, B]) extends Grammar[SI, SO, E, A \/ B]
     private[parserz] case class Rep[SI, SO, E, A](value: Grammar[SI, SO, E, A]) extends Grammar[SI, SO, E, List[A]]
@@ -203,19 +205,45 @@ trait ParsersModule {
       case Grammar.MapES(value, es, to, _) =>
         (s: S, i: Input) => {
           val (s1, res1) = parser(value)(s, i)
-          res1.fold(
-            e => s1 -> Left(e), {
-              case (i1, a) =>
-                to(a)
-                  .map { b =>
-                    s1 -> Right(i1 -> b)
-                  }
-                  .getOrElse {
-                    val (s2, e) = es(s1)
-                    s2 -> Left(e)
-                  }
-            }
-          )
+          res1 match {
+            case Left(e) =>
+              s1 -> Left(e)
+            case Right((i1, a)) =>
+              to(a)
+                .map { b =>
+                  s1 -> Right(i1 -> b)
+                }
+                .getOrElse {
+                  val (s2, e) = es(s1)
+                  s2 -> Left(e)
+                }
+          }
+        }
+
+      case Grammar.Filter(value, e, expr) =>
+        (s: S, i: Input) => {
+          val (s1, res1) = parser(value)(s, i)
+          s1 -> res1.flatMap {
+            case (i1, a) =>
+              if (exprFilter(expr)(a)) Right(i1 -> a)
+              else Left(e)
+          }
+        }
+
+      case Grammar.FilterES(value, es, expr) =>
+        (s: S, i: Input) => {
+          val (s1, res1) = parser(value)(s, i)
+          res1 match {
+            case Left(e) =>
+              s1 -> Left(e)
+            case Right((i1, a)) =>
+              if (exprFilter(expr)(a))
+                s1 -> Right(i1 -> a)
+              else {
+                val (s2, e) = es(s1)
+                s2 -> Left(e)
+              }
+          }
         }
 
       case zip: Grammar.Zip[S, S, E, ta, tb] =>
@@ -308,6 +336,23 @@ trait ParsersModule {
             }
         }
 
+      case Grammar.Filter(value, e, expr) =>
+        (s: S, in: (Input, A)) => {
+          val (i, a) = in
+          if (exprFilter(expr)(a)) printer(value)(s, (i, a))
+          else s -> Left(e)
+        }
+
+      case Grammar.FilterES(value, es, expr) =>
+        (s: S, in: (Input, A)) => {
+          val (i, a) = in
+          if (exprFilter(expr)(a)) printer(value)(s, (i, a))
+          else {
+            val (s2, e) = es(s)
+            s2 -> Left(e)
+          }
+        }
+
       case zip: Grammar.Zip[S, S, E, ta, tb] =>
         (s: S, in: (Input, ta /\ tb)) => {
           val (i, (a, b)) = in
@@ -356,6 +401,8 @@ trait ParsersModule {
         case Grammar.Map(value, _, _)      => tagOrExpand(value)
         case Grammar.MapS(value, _, _)     => tagOrExpand(value)
         case Grammar.MapES(value, _, _, _) => tagOrExpand(value)
+        case Grammar.Filter(v, _, expr)    => Some(exprBNF(expr)).filter(_.nonEmpty).getOrElse(tagOrExpand(v))
+        case Grammar.FilterES(v, _, expr)  => Some(exprBNF(expr)).filter(_.nonEmpty).getOrElse(tagOrExpand(v))
         case Grammar.Zip(left, right)      => tagOrExpand(left) + " " + tagOrExpand(right)
         case Grammar.Alt(left, right)      => "(" + tagOrExpand(left) + " | " + tagOrExpand(right) + ")"
         case Grammar.Rep(value)            => "List(" + tagOrExpand(value) + ")"
@@ -378,6 +425,8 @@ trait ParsersModule {
           case Grammar.Map(value, _, _)      => show(value)
           case Grammar.MapS(value, _, _)     => show(value)
           case Grammar.MapES(value, _, _, _) => show(value)
+          case Grammar.Filter(value, _, _)   => show(value)
+          case Grammar.FilterES(value, _, _) => show(value)
           case Grammar.Zip(left, right)      => show(left) ::: show(right)
           case Grammar.Alt(left, right)      => show(left) ::: show(right)
           case Grammar.Rep(value)            => show(value)
