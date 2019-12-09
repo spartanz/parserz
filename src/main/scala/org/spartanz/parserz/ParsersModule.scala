@@ -6,13 +6,6 @@ import scala.collection.mutable
 trait ParsersModule extends ExprModule {
   type Input
 
-  // todo: move out
-  trait Enumerable[A] {
-    val min: A
-    val max: A
-    def range(minA: A, maxA: A): Iterable[A]
-  }
-
   sealed abstract class Grammar[-SI, +SO, +E, A] {
     self =>
 
@@ -30,10 +23,10 @@ trait ParsersModule extends ExprModule {
     final def filter[E1 >: E](e: E1)(f: Expr[A]): Grammar[SI, SO, E1, A] =
       Filter[SI, SO, E1, A](self, e, f)
 
-    final def flatMap[SI1 <: SI, SO1 >: SO, E1 >: E, B](f: A => Grammar[SI1, SO1, E1, B])(
+    final def select[SI1 <: SI, SO1 >: SO, E1 >: E, B](f: A => Grammar[SI1, SO1, E1, B])(
       implicit en: Enumerable[A]
     ): Grammar[SI1, SO1, E1, B] =
-      Select(self.map(_ == en.max, b => if (b) en.max else en.min), f(en.max), f(en.min))
+      Select[SI1, SO1, E1, A, B](self, f, en)
 
     final def mapStatefully[SI1 <: SI, SO1 >: SO, B](to: (SI1, A) => (SO1, B), from: (SI1, B) => (SO1, A)): Grammar[SI1, SO1, E, B] =
       MapS[SI1, SO1, E, A, B](
@@ -78,10 +71,6 @@ trait ParsersModule extends ExprModule {
 
     final def | [SI1 <: SI, SO1 >: SO, E1 >: E, B](that: Grammar[SI1, SO1, E1, B]): Grammar[SI1, SO1, E1, A \/ B] = self.alt(that)
 
-    final def >>= [SI1 <: SI, SO1 >: SO, E1 >: E, B](f: A => Grammar[SI1, SO1, E1, B])(
-      implicit en: Enumerable[A]
-    ): Grammar[SI1, SO1, E1, B] = self.flatMap(f)
-
     final def rep: Grammar[SI, SO, E, List[A]] = Rep(self)
 
     final def rep1: Grammar[SI, SO, E, ::[A]] = Rep1(self)
@@ -105,7 +94,7 @@ trait ParsersModule extends ExprModule {
     private[parserz] case class FilterES[SI, SO, E, A](value: Grammar[SI, SO, E, A], fe: SI => (SO, E), filter: Expr[A]) extends Grammar[SI, SO, E, A]
     private[parserz] case class Zip[SI, SO, E, A, B](left: Grammar[SI, SO, E, A], right: Grammar[SI, SO, E, B]) extends Grammar[SI, SO, E, A /\ B]
     private[parserz] case class Alt[SI, SO, E, A, B](left: Grammar[SI, SO, E, A], right: Grammar[SI, SO, E, B]) extends Grammar[SI, SO, E, A \/ B]
-    private[parserz] case class Select[SI, SO, E, A, B](value: Grammar[SI, SO, E, Boolean], ifTrue: Grammar[SI, SO, E, B], ifFalse: Grammar[SI, SO, E, B]) extends Grammar[SI, SO, E, B]
+    private[parserz] case class Select[SI, SO, E, A, B](value: Grammar[SI, SO, E, A], f: A => Grammar[SI, SO, E, B], en: Enumerable[A]) extends Grammar[SI, SO, E, B]
     private[parserz] case class Rep[SI, SO, E, A](value: Grammar[SI, SO, E, A]) extends Grammar[SI, SO, E, List[A]]
     private[parserz] case class Rep1[SI, SO, E, A](value: Grammar[SI, SO, E, A]) extends Grammar[SI, SO, E, ::[A]]
     // format: on
@@ -289,11 +278,11 @@ trait ParsersModule extends ExprModule {
           res2
         }
 
-      case sel: Grammar.Select[S, S, E, _, tb] =>
+      case sel: Grammar.Select[S, S, E, _, _] =>
         (s: S, i: Input) => {
           parser(sel.value)(s, i) match {
             case (s1, Left(e))        => (s1, Left(e))
-            case (s1, Right((i1, b))) => if (b) parser(sel.ifTrue)(s1, i1) else parser(sel.ifFalse)(s1, i1)
+            case (s1, Right((i1, a))) => parser(sel.f(a))(s1, i1)
           }
         }
 
@@ -397,20 +386,21 @@ trait ParsersModule extends ExprModule {
           }
         }
 
-      case sel: Grammar.Select[S, S, E, _, tb] =>
+      case sel: Grammar.Select[S, S, E, ta, tb] =>
         (s: S, in: (Input, tb)) => {
           val (i, b) = in
-          val (sT, resT) = printer(sel.value)(s, (i, true)) match {
-            case (s1, Left(e1))  => (s1, Left(e1))
-            case (s1, Right(i1)) => printer(sel.ifTrue)(s1, (i1, b))
-          }
-          resT match {
-            case Left(_) =>
-              printer(sel.value)(s, (i, false)) match {
-                case (s1, Left(e1))  => (s1, Left(e1))
-                case (s1, Right(i1)) => printer(sel.ifFalse)(s1, (i1, b))
-              }
-            case r @ Right(_) => (sT, r)
+          val range = sel.en.range(sel.en.min, sel.en.max)
+          val choices = if (range.isEmpty) ::(sel.en.min, Nil) else ::(range.head, range.tail.toList)
+
+          def attempt(s: S, i: Input, a: ta): (S, E \/ Input) =
+            printer(sel.value)(s, (i, a)) match {
+              case (s1, Left(e1)) => (s1, Left(e1))
+              case (s1, Right(i1)) => printer(sel.f(a))(s1, (i1, b))
+            }
+
+          choices.tail.foldLeft[(S, E \/ Input)](attempt(s, i, choices.head)) {
+            case ((s1, Right(i1)), _) => (s1, Right(i1))
+            case ((s1, Left(_)), a)   => attempt(s1, i, a)
           }
         }
 
@@ -448,7 +438,7 @@ trait ParsersModule extends ExprModule {
         case Grammar.FilterES(v, _, expr)  => Some(exprBNF(expr)).filter(_.nonEmpty).getOrElse(tagOrExpand(v))
         case Grammar.Zip(left, right)      => tagOrExpand(left) + " " + tagOrExpand(right)
         case Grammar.Alt(left, right)      => "(" + tagOrExpand(left) + " | " + tagOrExpand(right) + ")"
-        case Grammar.Select(_, _, _)       => ???
+        case Grammar.Select(_, f, en)      => en.range(en.min, en.max).map(a => tagOrExpand(f(a))).mkString("(", " | ", ")")
         case Grammar.Rep(value)            => "List(" + tagOrExpand(value) + ")"
         case Grammar.Rep1(value)           => "NEL(" + tagOrExpand(value) + ")"
       }
@@ -473,7 +463,7 @@ trait ParsersModule extends ExprModule {
           case Grammar.FilterES(value, _, _) => show(value)
           case Grammar.Zip(left, right)      => show(left) ::: show(right)
           case Grammar.Alt(left, right)      => show(left) ::: show(right)
-          case Grammar.Select(_, _, _)       => ???
+          case Grammar.Select(value, _, _)   => show(value)
           case Grammar.Rep(value)            => show(value)
           case Grammar.Rep1(value)           => show(value)
         }
