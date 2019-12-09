@@ -438,7 +438,7 @@ trait ParsersModule extends ExprModule {
         case Grammar.FilterES(v, _, expr)  => Some(exprBNF(expr)).filter(_.nonEmpty).getOrElse(tagOrExpand(v))
         case Grammar.Zip(left, right)      => tagOrExpand(left) + " " + tagOrExpand(right)
         case Grammar.Alt(left, right)      => "(" + tagOrExpand(left) + " | " + tagOrExpand(right) + ")"
-        case Grammar.Select(_, f, en)      => en.range(en.min, en.max).map(a => tagOrExpand(f(a))).mkString("(", " | ", ")")
+        case Grammar.Select(_, f, en)      => en.range(en.min, en.max).map(a => tagOrExpand(f(a))).filter(_.nonEmpty).mkString("(", " | ", ")")
         case Grammar.Rep(value)            => "List(" + tagOrExpand(value) + ")"
         case Grammar.Rep1(value)           => "NEL(" + tagOrExpand(value) + ")"
       }

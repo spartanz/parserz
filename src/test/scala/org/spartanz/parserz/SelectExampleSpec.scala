@@ -11,6 +11,7 @@ object SelectExampleSpec {
       val min: Header = MyHeader("test")
       val max: Header = MyHeader("pro2")
       def range(min: Header, max: Header): Iterable[Header] = List(
+        MyHeader("*"),
         MyHeader("test"),
         MyHeader("pro1"),
         MyHeader("pro2"),
@@ -49,7 +50,10 @@ object SelectExampleSpec {
 
   val divider: G[Char] = char.filter("expected: divider")(===(`-`))
 
-  val protocol: G[String] = (char.filter("expected: alphabetical")(=!=(`-`)).rep.tag("chars") <~ ((`-`, divider))) ∘ (_.mkString, _.toList)
+  val protocol: G[String] = (char.filter("expected: alphabetical")(cond(_.isLetterOrDigit)).rep1.tag("chars") <~ ((`-`, divider))) ∘ (
+    _.mkString,
+    s => ::(s.head, s.drop(1).toList)
+  )
 
   val header: G[Header] = "Header" @@ protocol ∘ (MyHeader, { case MyHeader(p) => p })
 
@@ -106,6 +110,9 @@ class SelectExampleSpec extends Specification {
   "-> unknown packet" in {
     parsePacket("blah-?!?") must_=== 6 -> Left("unsupported protocol 'blah'")
   }
+  "-> wrong protocol name" in {
+    parsePacket("?+?") must_=== 1 -> Left("expected: alphabetical")
+  }
 
   "-> correct pro1 packet" in {
     parsePacket("pro1-AAA") must_=== 9 -> Right("" -> Pro1Body("AAA"))
@@ -136,7 +143,7 @@ class SelectExampleSpec extends Specification {
   "bnf for headers" in {
     Parser.bnf(header).mkString("\n", "\n", "\n") must_===
       """
-        |<chars> ::= List(- "-")
+        |<chars> ::= NEL()
         |<Header> ::= <chars> "-"
         |""".stripMargin
   }
@@ -144,7 +151,7 @@ class SelectExampleSpec extends Specification {
   "bnf for packets" in {
     Parser.bnf(body).mkString("\n", "\n", "\n") must_===
       """
-        |<chars> ::= List(- "-")
+        |<chars> ::= NEL()
         |<Header> ::= <chars> "-"
         |<Body> ::= (<Test> | <Pro1> | <Pro2>)
         |""".stripMargin
