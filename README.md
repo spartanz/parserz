@@ -4,9 +4,13 @@ Welcome to Parserz
 #### zero dependency invertible parser combinators library for Scala
 
 
+[![License](https://img.shields.io/badge/license-Apache%202.0-green)](https://opensource.org/licenses/Apache-2.0)
 [![Build Status](https://travis-ci.org/spartanz/parserz.svg?branch=master)](https://travis-ci.org/spartanz/parserz)
-[![codecov](https://codecov.io/gh/spartanz/parserz/branch/master/graph/badge.svg)](https://codecov.io/gh/spartanz/parserz)
+[![CodeCov](https://codecov.io/gh/spartanz/parserz/branch/master/graph/badge.svg)](https://codecov.io/gh/spartanz/parserz)
 [![Gitter](https://badges.gitter.im/spartanz/community.svg)](https://gitter.im/spartanz/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
+
+[![Maven Central](https://img.shields.io/maven-central/v/org.spartanz/parserz_2.12.svg?label=maven%20central%202.12)](https://search.maven.org/search?q=g:%22org.spartanz%22%20AND%20a:%22parserz_2.12%22)
+[![Maven Central](https://img.shields.io/maven-central/v/org.spartanz/parserz_2.13.svg?label=maven%20central%202.13)](https://search.maven.org/search?q=g:%22org.spartanz%22%20AND%20a:%22parserz_2.13%22)
 
 ---
 
