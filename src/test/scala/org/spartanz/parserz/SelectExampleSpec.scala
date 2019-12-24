@@ -50,16 +50,16 @@ object SelectExampleSpec {
 
   val divider: G[Char] = char.filter("expected: divider")(===(`-`))
 
-  val protocol: G[String] = (char.filter("expected: alphabetical")(cond(_.isLetterOrDigit)).rep1.tag("chars") <~ ((`-`, divider))) ∘ (
+  val protocol: G[String] = (char.filter("expected: alphabetical")(cond(_.isLetterOrDigit)).rep1.tag("chars") <~ (`-`, divider)) ∘ (
     _.mkString,
     s => ::(s.head, s.drop(1).toList)
   )
 
   val header: G[Header] = "Header" @@ protocol ∘ (MyHeader, { case MyHeader(p) => p })
 
-  val testBody: G[TestBody] = (char.rep <~ (((), eoi))) ∘ (cs => TestBody(cs.mkString), _.data.toList)
-  val pro1Body: G[Pro1Body] = (char.filter("expected: 'A'")(===('A')).rep <~ (((), eoi))) ∘ (cs => Pro1Body(cs.mkString), _.data.toList)
-  val pro2Body: G[Pro2Body] = (char.filter("expected: 'B'")(===('B')).rep <~ (((), eoi))) ∘ (cs => Pro2Body(cs.mkString), _.data.toList)
+  val testBody: G[TestBody] = (char.rep <~ ((), eoi)) ∘ (cs => TestBody(cs.mkString), _.data.toList)
+  val pro1Body: G[Pro1Body] = (char.filter("expected: 'A'")(===('A')).rep <~ ((), eoi)) ∘ (cs => Pro1Body(cs.mkString), _.data.toList)
+  val pro2Body: G[Pro2Body] = (char.filter("expected: 'B'")(===('B')).rep <~ ((), eoi)) ∘ (cs => Pro2Body(cs.mkString), _.data.toList)
 
   val asTest: G[Body] = "Test" @@ testBody.mapPartial("expected: Test")({ case t => t }, { case t: TestBody => t })
   val asPro1: G[Body] = "Pro1" @@ pro1Body.mapPartial("expected: Pro1")({ case t => t }, { case t: Pro1Body => t })

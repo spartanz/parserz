@@ -68,7 +68,7 @@ object LanguageExampleSpec {
       case e1 :: en => Left((e1, en))
     })
 
-    val fun: G[Fun] = "function" @@ (name ~ ((paren1, `(`) ~> args <~ ((`)`, paren2)))).map(
+    val fun: G[Fun] = "function" @@ (name ~ ((paren1, `(`) ~> args <~ (`)`, paren2))).map(
       { case (name, exp)    => Fun(name, exp) },
       { case Fun(name, exp) => (name, exp) }
     )

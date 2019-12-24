@@ -54,11 +54,11 @@ trait ParsersModule extends ExprModule {
     final def zip[SI1 <: SI, SO1 >: SO, E1 >: E, B](that: Grammar[SI1, SO1, E1, B]): Grammar[SI1, SO1, E1, A /\ B] =
       Zip(self, that)
 
-    final def zipL[SI1 <: SI, SO1 >: SO, E1 >: E, B](that: (Grammar[SI1, SO1, E1, B], B)): Grammar[SI1, SO1, E1, A] =
-      ZipL(self, that._1, that._2)
+    final def zipL[SI1 <: SI, SO1 >: SO, E1 >: E, B](that: Grammar[SI1, SO1, E1, B], b: B): Grammar[SI1, SO1, E1, A] =
+      ZipL(self, that, b)
 
-    final def zipR[SI1 <: SI, SO1 >: SO, E1 >: E, B](that: (A, Grammar[SI1, SO1, E1, B])): Grammar[SI1, SO1, E1, B] =
-      ZipR(self, that._2, that._1)
+    final def zipR[SI1 <: SI, SO1 >: SO, E1 >: E, B](a: A, that: Grammar[SI1, SO1, E1, B]): Grammar[SI1, SO1, E1, B] =
+      ZipR(self, that, a)
 
     final def alt[SI1 <: SI, SO1 >: SO, E1 >: E, B](that: Grammar[SI1, SO1, E1, B]): Grammar[SI1, SO1, E1, A \/ B] =
       Alt(self, that)
@@ -67,7 +67,7 @@ trait ParsersModule extends ExprModule {
 
     final def ~ [SI1 <: SI, SO1 >: SO, E1 >: E, B](that: Grammar[SI1, SO1, E1, B]): Grammar[SI1, SO1, E1, A /\ B] = self.zip(that)
 
-    final def <~ [SI1 <: SI, SO1 >: SO, E1 >: E, B](that: (B, Grammar[SI1, SO1, E1, B])): Grammar[SI1, SO1, E1, A] = self.zipL(that.swap)
+    final def <~ [SI1 <: SI, SO1 >: SO, E1 >: E, B](b: B, that: Grammar[SI1, SO1, E1, B]): Grammar[SI1, SO1, E1, A] = self.zipL(that, b)
 
     final def | [SI1 <: SI, SO1 >: SO, E1 >: E, B](that: Grammar[SI1, SO1, E1, B]): Grammar[SI1, SO1, E1, A \/ B] = self.alt(that)
 
@@ -164,7 +164,7 @@ trait ParsersModule extends ExprModule {
     implicit final class ToZipOps1[SI, SO, E, A, B](self: (Grammar[SI, SO, E, A], A)) {
 
       def ~> [SI1 <: SI, SO1 >: SO, E1 >: E](that: Grammar[SI1, SO1, E1, B]): Grammar[SI1, SO1, E1, B] =
-        self._1.zipR((self._2, that))
+        self._1.zipR(self._2, that)
     }
 
     implicit final class ToFoldOps1[SI, SO, E, A, B](self: Grammar[SI, SO, E, (A, List[B])]) {
@@ -288,15 +288,14 @@ trait ParsersModule extends ExprModule {
 
       case alt: Grammar.Alt[S, S, E, ta, tb] =>
         (s: S, i: Input) => {
-          val res1: (S, E \/ (Input, ta)) = parser(alt.left)(s, i)
-          val res2: (S, E \/ (Input, ta \/ tb)) = res1 match {
-            case (s1, Left(_)) =>
-              val (s2, r2) = parser(alt.right)(s1, i)
-              (s2, r2.map { case (i2, b) => (i2, Right(b)) })
-            case (s1, Right((i1, a))) =>
-              (s1, Right((i1, Left(a))))
+          val (s1, res1): (S, E \/ (Input, ta)) = parser(alt.left)(s, i)
+          val ret: (S, E \/ (Input, ta \/ tb)) = res1 match {
+            case Right((i1, a)) => (s1, Right((i1, Left(a))))
+            case Left(_)        =>
+              val (s2, res2) = parser(alt.right)(s1, i)
+              (s2, res2.map { case (i2, b) => (i2, Right(b)) })
           }
-          res2
+          ret
         }
 
       case sel: Grammar.Select[S, S, E, _, _] =>

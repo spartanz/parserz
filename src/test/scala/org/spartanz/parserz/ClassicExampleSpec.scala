@@ -63,7 +63,7 @@ object ClassicExampleSpec {
       { case Constant(i) => i }
     )
 
-    val multiplier: G[Expression] = "Multiplier" @@ (((paren1, `(`) ~> addition <~ ((`)`, paren2))) | constant).map({
+    val multiplier: G[Expression] = "Multiplier" @@ (((paren1, `(`) ~> addition <~ (`)`, paren2)) | constant).map({
       case Left(exp)  => SubExpr(exp)
       case Right(exp) => exp
     }, {
@@ -151,8 +151,11 @@ class ClassicExampleSpec extends Specification {
   "mix of four (explicit precedence)" in {
     loop0("12+34*(56+78)", Operation(Constant(12), Add, Operation(Constant(34), Mul, SubExpr(Operation(Constant(56), Add, Constant(78))))))
   }
-  "incorrect composition" in {
+  "incorrect composition 0" in {
     print(Operation(Constant(1), Add, Operation(Constant(2), Add, Constant(3)))) must_=== Left("expected: Constant")
+  }
+  "incorrect composition 1" in {
+    print(Operation(Constant(1), Mul, SubExpr(SubExpr(Constant(2))))) must_=== Left("expected: Constant")
   }
   "incorrect composition 2" in {
     print(Operation(Constant(1), Add, SubExpr(Constant(2)))) must_=== Left("expected: Constant")
