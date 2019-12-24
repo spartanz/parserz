@@ -55,10 +55,10 @@ trait ParsersModule extends ExprModule {
       Zip(self, that)
 
     final def zipL[SI1 <: SI, SO1 >: SO, E1 >: E, B](that: (Grammar[SI1, SO1, E1, B], B)): Grammar[SI1, SO1, E1, A] =
-      self.zip(that._1).map(_._1, (_, that._2))
+      ZipL(self, that._1, that._2)
 
     final def zipR[SI1 <: SI, SO1 >: SO, E1 >: E, B](that: (A, Grammar[SI1, SO1, E1, B])): Grammar[SI1, SO1, E1, B] =
-      self.zip(that._2).map(_._2, (that._1, _))
+      ZipR(self, that._2, that._1)
 
     final def alt[SI1 <: SI, SO1 >: SO, E1 >: E, B](that: Grammar[SI1, SO1, E1, B]): Grammar[SI1, SO1, E1, A \/ B] =
       Alt(self, that)
@@ -93,6 +93,8 @@ trait ParsersModule extends ExprModule {
     private[parserz] case class Filter[SI, SO, E, A](value: Grammar[SI, SO, E, A], e: E, filter: Expr[A]) extends Grammar[SI, SO, E, A]
     private[parserz] case class FilterES[SI, SO, E, A](value: Grammar[SI, SO, E, A], fe: SI => (SO, E), filter: Expr[A]) extends Grammar[SI, SO, E, A]
     private[parserz] case class Zip[SI, SO, E, A, B](left: Grammar[SI, SO, E, A], right: Grammar[SI, SO, E, B]) extends Grammar[SI, SO, E, A /\ B]
+    private[parserz] case class ZipL[SI, SO, E, A, B](left: Grammar[SI, SO, E, A], right: Grammar[SI, SO, E, B], b: B) extends Grammar[SI, SO, E, A]
+    private[parserz] case class ZipR[SI, SO, E, A, B](left: Grammar[SI, SO, E, A], right: Grammar[SI, SO, E, B], a: A) extends Grammar[SI, SO, E, B]
     private[parserz] case class Alt[SI, SO, E, A, B](left: Grammar[SI, SO, E, A], right: Grammar[SI, SO, E, B]) extends Grammar[SI, SO, E, A \/ B]
     private[parserz] case class Select[SI, SO, E, A, B](value: Grammar[SI, SO, E, A], f: A => Grammar[SI, SO, E, B], en: Enumerable[A]) extends Grammar[SI, SO, E, B]
     private[parserz] case class Rep[SI, SO, E, A](value: Grammar[SI, SO, E, A]) extends Grammar[SI, SO, E, List[A]]
@@ -254,15 +256,34 @@ trait ParsersModule extends ExprModule {
 
       case zip: Grammar.Zip[S, S, E, ta, tb] =>
         (s: S, i: Input) => {
-          val res1: (S, E \/ (Input, ta)) = parser(zip.left)(s, i)
-          val res2: (S, E \/ (Input, (ta, tb))) = res1 match {
-            case (s1, Left(e)) =>
-              (s1, Left(e))
-            case (s1, Right((i1, a))) =>
-              val (s2, r2) = parser(zip.right)(s1, i1)
-              (s2, r2.map { case (i2, b) => (i2, (a, b)) })
+          val (s1, res1): (S, E \/ (Input, ta)) = parser(zip.left)(s, i)
+          val ret: (S, E \/ (Input, (ta, tb))) = res1 match {
+            case Left(e1)       => (s1, Left(e1))
+            case Right((i1, a)) =>
+              val (s2, res2) = parser(zip.right)(s1, i1)
+              (s2, res2.map[(Input, (ta, tb))] { case (i2, b) => (i2, (a, b)) })
           }
-          res2
+          ret
+        }
+
+      case zip: Grammar.ZipL[S, S, E, ta, tb] =>
+        (s: S, i: Input) => {
+          val (s1, res1): (S, E \/ (Input, ta)) = parser(zip.left)(s, i)
+          res1 match {
+            case Left(e1)       => (s1, Left(e1))
+            case Right((i1, a)) =>
+              val (s2, res2) = parser(zip.right)(s1, i1)
+              (s2, res2.map { case (i2, _) => (i2, a) })
+          }
+        }
+
+      case zip: Grammar.ZipR[S, S, E, ta, tb] =>
+        (s: S, i: Input) => {
+          val (s1, res1): (S, E \/ (Input, ta)) = parser(zip.left)(s, i)
+          res1 match {
+            case Left(e1)       => (s1, Left(e1))
+            case Right((i1, _)) => parser(zip.right)(s1, i1)
+          }
         }
 
       case alt: Grammar.Alt[S, S, E, ta, tb] =>
@@ -377,6 +398,26 @@ trait ParsersModule extends ExprModule {
           }
         }
 
+      case zip: Grammar.ZipL[S, S, E, ta, tb] =>
+        (s: S, in: (Input, ta)) => {
+          val (i, a)     = in
+          val (s1, res1) = printer(zip.left)(s, (i, a))
+          res1 match {
+            case Left(e)   => (s1, Left(e))
+            case Right(i1) => printer(zip.right)(s1, (i1, zip.b))
+          }
+        }
+
+      case zip: Grammar.ZipR[S, S, E, ta, tb] =>
+        (s: S, in: (Input, tb)) => {
+          val (i, b)     = in
+          val (s1, res1) = printer(zip.left)(s, (i, zip.a))
+          res1 match {
+            case Left(e)   => (s1, Left(e))
+            case Right(i1) => printer(zip.right)(s1, (i1, b))
+          }
+        }
+
       case alt: Grammar.Alt[S, S, E, ta, tb] =>
         (s: S, in: (Input, ta \/ tb)) => {
           val (i, ab) = in
@@ -437,6 +478,8 @@ trait ParsersModule extends ExprModule {
         case Grammar.Filter(v, _, expr)    => Some(exprBNF(expr)).filter(_.nonEmpty).getOrElse(tagOrExpand(v))
         case Grammar.FilterES(v, _, expr)  => Some(exprBNF(expr)).filter(_.nonEmpty).getOrElse(tagOrExpand(v))
         case Grammar.Zip(left, right)      => tagOrExpand(left) + " " + tagOrExpand(right)
+        case Grammar.ZipL(left, right, _)  => tagOrExpand(left) + " " + tagOrExpand(right)
+        case Grammar.ZipR(left, right, _)  => tagOrExpand(left) + " " + tagOrExpand(right)
         case Grammar.Alt(left, right)      => "(" + tagOrExpand(left) + " | " + tagOrExpand(right) + ")"
         case Grammar.Select(_, f, en)      => en.range(en.min, en.max).map(a => tagOrExpand(f(a))).filter(_.nonEmpty).mkString("(", " | ", ")")
         case Grammar.Rep(value)            => "List(" + tagOrExpand(value) + ")"
@@ -462,6 +505,8 @@ trait ParsersModule extends ExprModule {
           case Grammar.Filter(value, _, _)   => show(value)
           case Grammar.FilterES(value, _, _) => show(value)
           case Grammar.Zip(left, right)      => show(left) ::: show(right)
+          case Grammar.ZipL(left, right, _)  => show(left) ::: show(right)
+          case Grammar.ZipR(left, right, _)  => show(left) ::: show(right)
           case Grammar.Alt(left, right)      => show(left) ::: show(right)
           case Grammar.Select(value, _, _)   => show(value)
           case Grammar.Rep(value)            => show(value)
