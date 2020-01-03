@@ -23,6 +23,15 @@ trait ParsersModule extends ExprModule {
     final def filter[E1 >: E](e: E1)(f: Expr[A]): Grammar[SI, SO, E1, A] =
       Filter[SI, SO, E1, A](self, e, f)
 
+    final def option: Grammar[SI, SO, E, Option[A]] =
+      alt(succeed(None)).map({
+        case Left(v)  => Some(v)
+        case Right(_) => None
+      }, {
+        case Some(v) => Left(v)
+        case None    => Right(None)
+      })
+
     final def select[SI1 <: SI, SO1 >: SO, E1 >: E, B](f: A => Grammar[SI1, SO1, E1, B])(
       implicit en: Enumerable[A]
     ): Grammar[SI1, SO1, E1, B] =
