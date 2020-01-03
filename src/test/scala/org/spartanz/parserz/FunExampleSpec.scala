@@ -20,6 +20,7 @@ object FunExampleSpec {
     val good: Grammar[Any, Nothing, Nothing, String] = succeed("🎁")
     val bad: Grammar[Any, Nothing, E, String]        = fail("🚫")
 
+    val badIgnored: Grammar[Any, Nothing, E, String]   = (bad, "❓") ~> good
     val badFiltered: Grammar[Any, Nothing, E, String]  = bad.filter("not good")(===("✅")).tag("not suitable for bad")
     val badConfirmed: Grammar[Any, Nothing, E, String] = bad.filter("not good")(=!=("✅")).tag("suitable for bad")
 
@@ -77,6 +78,13 @@ class FunExampleSpec extends Specification {
     }
     "<- generate error" in {
       printer(bad)("abc" -> "🎁") must_=== Left("🚫")
+    }
+
+    "-> try to ignore error" in {
+      parser(badIgnored)("abc") must_=== Left("🚫")
+    }
+    "<- try to ignore error" in {
+      printer(badIgnored)("abc" -> "🎁") must_=== Left("🚫")
     }
 
     "-> filter generated error" in {

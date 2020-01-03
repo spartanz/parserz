@@ -85,7 +85,7 @@ object StatefulExampleSpec {
       { case Constant(i) => i }
     )
 
-    val multiplier: G[Expression] = "Multiplier" @@ (((paren1, `(`) ~> addition <~ ((`)`, paren2))) | constant).mapStatefully({
+    val multiplier: G[Expression] = "Multiplier" @@ (((paren1, `(`) ~> addition <~ (`)`, paren2)) | constant).mapStatefully({
       case (s, Left(exp))  => (s, SubExpr(exp))
       case (s, Right(exp)) => (s, exp)
     }, {
@@ -107,7 +107,7 @@ object StatefulExampleSpec {
       )
     }
 
-    val expr: G[Expression] = addition <~ (((), eof))
+    val expr: G[Expression] = addition <~ ((), eof)
 
     val parser: (S, Input) => (S, E \/ (Input, Expression))  = Parser.parser[S, E, Expression](expr)
     val printer: (S, (Input, Expression)) => (S, E \/ Input) = Parser.printer[S, E, Expression](expr)
