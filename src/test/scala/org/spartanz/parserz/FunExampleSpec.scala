@@ -88,6 +88,9 @@ class FunExampleSpec extends Specification {
       printer(badIgnore)("abc" -> "🎁") must_=== Left("🚫")
     }
 
+    "-> make value optional" in {
+      parser(good.option)("abc") must_=== Right(("abc", Some("🎁")))
+    }
     "-> make error optional" in {
       parser(badOptional)("abc") must_=== Right(("abc", None))
     }
