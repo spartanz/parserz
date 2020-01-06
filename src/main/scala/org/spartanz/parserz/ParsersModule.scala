@@ -33,6 +33,9 @@ trait ParsersModule extends ExprModule {
         case None    => Right(None)
       })
 
+    final def recover(default: A): Grammar[SI, SO, E, A] =
+      alt(succeed(default)).map(_.merge, Left(_))
+
     final def select[SI1 <: SI, SO1 >: SO, E1 >: E, B](f: A => Grammar[SI1, SO1, E1, B])(
       implicit en: Enumerable[A]
     ): Grammar[SI1, SO1, E1, B] =
@@ -168,9 +171,10 @@ trait ParsersModule extends ExprModule {
 
   trait GrammarSyntax {
 
-    implicit final class ToGrammarOps1(self: String) {
+    implicit final class ToStringOps1(self: String) {
 
-      def @@ [SI, SO, E, A](g: Grammar[SI, SO, E, A]): Grammar[SI, SO, E, A] = g @@ self
+      def @@ [SI, SO, E, A](g: Grammar[SI, SO, E, A]): Grammar[SI, SO, E, A] =
+        g @@ self
     }
 
     implicit final class ToZipOps1[SI, SO, E, A, B](self: (Grammar[SI, SO, E, A], A)) {
@@ -179,7 +183,13 @@ trait ParsersModule extends ExprModule {
         self._1.zipR(self._2, that)
     }
 
-    implicit final class ToFoldOps1[SI, SO, E, A, B](self: Grammar[SI, SO, E, (A, List[B])]) {
+    implicit final class ToGrammarOps1[SI, SO, E, A, B](self: Grammar[SI, SO, E, List[A]]) {
+
+      def orEmpty: Grammar[SI, SO, E, List[A]] =
+        self.recover(Nil)
+    }
+
+    implicit final class ToGrammarOps2[SI, SO, E, A, B](self: Grammar[SI, SO, E, (A, List[B])]) {
 
       def foldLeft(fold: (A, B) => A, unfold: A =?> (A, B)): Grammar[SI, SO, E, A] =
         self.map(

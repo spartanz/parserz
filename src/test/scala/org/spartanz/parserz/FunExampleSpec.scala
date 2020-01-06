@@ -92,13 +92,13 @@ class FunExampleSpec extends Specification {
       parser(good.option)("abc") must_=== Right(("abc", Some("🎁")))
     }
     "-> make error optional" in {
-      parser(badOptional)("abc") must_=== Right(("abc", None))
+      parser(bad.option)("abc") must_=== Right(("abc", None))
     }
     "<- make error optional (error)" in {
-      printer(badOptional)("abc" -> Some("🎁")) must_=== Left("🚫")
+      printer(bad.option)("abc" -> Some("🎁")) must_=== Left("🚫")
     }
     "<- make error optional (no error)" in {
-      printer(badOptional)("abc" -> None) must_=== Right("abc")
+      printer(bad.option)("abc" -> None) must_=== Right("abc")
     }
 
     "-> filter generated error" in {
