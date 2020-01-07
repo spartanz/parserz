@@ -138,7 +138,7 @@ trait ParsersModule extends ExprModule {
       to: (SI, Input) => (SO, Option[(Input, A)]),
       from: (SI, (Input, A)) => (SO, Option[Input])
     ): Grammar[SI, SO, E, A] =
-      consumeStatefully(
+      GADT.ConsumeS(
         { (si: SI, i: Input) =>
           val (so, r) = to(si, i)
           (so, r.map(Right(_)).getOrElse(Left(e)))
@@ -151,10 +151,11 @@ trait ParsersModule extends ExprModule {
     final def consume[E, A](to: Input => E \/ (Input, A), from: ((Input, A)) => E \/ Input): Grammar[Any, Nothing, E, A] =
       GADT.Consume(to, from)
 
-    final def consumeOption[E, A](
-      e: E
-    )(to: Input => Option[(Input, A)], from: ((Input, A)) => Option[Input]): Grammar[Any, Nothing, E, A] =
-      consume(asEither(e)(to), asEither(e)(from))
+    final def consumePure[E, A](to: Input => (Input, A), from: ((Input, A)) => Input): Grammar[Any, Nothing, E, A] =
+      GADT.Consume(i => Right(to(i)), in => Right(from(in)))
+
+    final def consumeOption[E, A](e: E)(to: Input => Option[(Input, A)], from: ((Input, A)) => Option[Input]): Grammar[Any, Nothing, E, A] =
+      GADT.Consume(asEither(e)(to), asEither(e)(from))
 
     final def delay[SI, SO, E, A](g: => Grammar[SI, SO, E, A]): Grammar[SI, SO, E, A] =
       GADT.Delay(() => g)
