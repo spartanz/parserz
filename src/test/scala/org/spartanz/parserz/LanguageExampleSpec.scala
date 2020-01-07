@@ -60,12 +60,12 @@ object LanguageExampleSpec {
       }
     )
 
-    val args: G[List[Exp]] = "arguments" @@ ((expr ~ ((comma, `,`) ~> expr).rep) | succeed(Nil)).map({
-      case Left((e1, en)) => e1 :: en
-      case Right(_)       => Nil
+    val args: G[List[Exp]] = "arguments" @@ (expr ~ ((comma, `,`) ~> expr).rep).option.map({
+      case Some((e1, en)) => e1 :: en
+      case None           => Nil
     }, {
-      case Nil      => Right(Nil)
-      case e1 :: en => Left((e1, en))
+      case Nil      => None
+      case e1 :: en => Some((e1, en))
     })
 
     val fun: G[Fun] = "function" @@ (name ~ ((paren1, `(`) ~> args <~ (`)`, paren2))).map(

@@ -20,9 +20,10 @@ object FunExampleSpec {
     val good: Grammar[Any, Nothing, Nothing, String] = succeed("🎁")
     val bad: Grammar[Any, Nothing, E, String]        = fail("🚫")
 
-    val badIgnored: Grammar[Any, Nothing, E, String]   = (bad, "❓") ~> good
-    val badFiltered: Grammar[Any, Nothing, E, String]  = bad.filter("not good")(===("✅")).tag("not suitable for bad")
-    val badConfirmed: Grammar[Any, Nothing, E, String] = bad.filter("not good")(=!=("✅")).tag("suitable for bad")
+    val badOptional: Grammar[Any, Nothing, E, Option[String]] = bad.option
+    val badIgnore: Grammar[Any, Nothing, E, String]           = (bad, "❓") ~> good
+    val badAssertGood: Grammar[Any, Nothing, E, String]       = bad.filter("not good")(===("✅")).tag("not suitable for bad")
+    val badAssertNotGood: Grammar[Any, Nothing, E, String]    = bad.filter("not good")(=!=("✅")).tag("suitable for bad")
 
     def parser[A](g: Grammar[Any, Nothing, E, A]): Input => E \/ (Input, A)    = Parser.parser[S, E, A](g)((), _)._2
     def printer[A](g: Grammar[Any, Nothing, E, A]): ((Input, A)) => E \/ Input = Parser.printer[S, E, A](g)((), _)._2
@@ -81,33 +82,46 @@ class FunExampleSpec extends Specification {
     }
 
     "-> try to ignore error" in {
-      parser(badIgnored)("abc") must_=== Left("🚫")
+      parser(badIgnore)("abc") must_=== Left("🚫")
     }
     "<- try to ignore error" in {
-      printer(badIgnored)("abc" -> "🎁") must_=== Left("🚫")
+      printer(badIgnore)("abc" -> "🎁") must_=== Left("🚫")
+    }
+
+    "-> make value optional" in {
+      parser(good.option)("abc") must_=== Right(("abc", Some("🎁")))
+    }
+    "-> make error optional" in {
+      parser(bad.option)("abc") must_=== Right(("abc", None))
+    }
+    "<- make error optional (error)" in {
+      printer(bad.option)("abc" -> Some("🎁")) must_=== Left("🚫")
+    }
+    "<- make error optional (no error)" in {
+      printer(bad.option)("abc" -> None) must_=== Right("abc")
     }
 
     "-> filter generated error" in {
-      parser(badFiltered)("abc") must_=== Left("🚫")
+      parser(badAssertGood)("abc") must_=== Left("🚫")
     }
     "<- filter generated error" in {
-      printer(badFiltered)("abc" -> "🎁") must_=== Left("not good")
+      printer(badAssertGood)("abc" -> "🎁") must_=== Left("not good")
     }
     "!! filter generated error" in {
-      bnf(badFiltered) must_===
+      bnf(badAssertGood) must_===
         """
           |<not suitable for bad> ::= "✅"
           |""".stripMargin
     }
 
     "-> confirm generated error" in {
-      parser(badConfirmed)("abc") must_=== Left("🚫")
+      parser(badAssertNotGood)("abc") must_=== Left("🚫")
     }
     "<- confirm generated error" in {
-      printer(badConfirmed)("abc" -> "🎁") must_=== Left("🚫")
+      printer(badAssertNotGood)("abc" -> "🎁") must_=== Left("🚫")
     }
     "!! confirm generated error" in {
-      bnf(badConfirmed) must_===
+      bnf(badAssertNotGood) must_===
         """
           |<suitable for bad> ::= - "✅"
           |""".stripMargin

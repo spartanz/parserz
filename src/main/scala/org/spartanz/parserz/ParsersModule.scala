@@ -10,6 +10,7 @@ trait ParsersModule extends ExprModule {
     self =>
 
     import Grammar._
+    import Grammar.GADT._
 
     final def map[B](to: A => B, from: B => A): Grammar[SI, SO, E, B] =
       Map[SI, SO, E, A, B](self, a => Right(to(a)), b => Right(from(b)))
@@ -22,6 +23,18 @@ trait ParsersModule extends ExprModule {
 
     final def filter[E1 >: E](e: E1)(f: Expr[A]): Grammar[SI, SO, E1, A] =
       Filter[SI, SO, E1, A](self, e, f)
+
+    final def option: Grammar[SI, SO, E, Option[A]] =
+      alt(succeed(None)).map({
+        case Left(v)  => Some(v)
+        case Right(_) => None
+      }, {
+        case Some(v) => Left(v)
+        case None    => Right(None)
+      })
+
+    final def recover(default: A): Grammar[SI, SO, E, A] =
+      alt(succeed(default)).map(_.merge, Left(_))
 
     final def select[SI1 <: SI, SO1 >: SO, E1 >: E, B](f: A => Grammar[SI1, SO1, E1, B])(
       implicit en: Enumerable[A]
@@ -82,30 +95,32 @@ trait ParsersModule extends ExprModule {
 
   object Grammar extends GrammarSyntax {
     // format: off
-    private[parserz] case class Unit0() extends Grammar[Any, Nothing, Nothing, Unit]
-    private[parserz] case class Consume[SI, SO, E, A](to: Input => E \/ (Input, A), from: ((Input, A)) => E \/ Input) extends Grammar[Any, Nothing, E, A]
-    private[parserz] case class ConsumeS[SI, SO, E, A](to: (SI, Input) => (SO, E \/ (Input, A)), from: (SI, (Input, A)) => (SO, E \/ Input)) extends Grammar[SI, SO, E, A]
-    private[parserz] case class Delay[SI, SO, E, A](delayed: () => Grammar[SI, SO, E, A]) extends Grammar[SI, SO, E, A]
-    private[parserz] case class Tag[SI, SO, E, A](value: Grammar[SI, SO, E, A], tag: String) extends Grammar[SI, SO, E, A]
-    private[parserz] case class Map[SI, SO, E, A, B](value: Grammar[SI, SO, E, A], to: A => E \/ B, from: B => E \/ A) extends Grammar[SI, SO, E, B]
-    private[parserz] case class MapS[SI, SO, E, A, B](value: Grammar[SI, SO, E, A], to: (SI, A) => (SO, E \/ B), from: (SI, B) => (SO, E \/ A)) extends Grammar[SI, SO, E, B]
-    private[parserz] case class MapES[SI, SO, E, A, B](value: Grammar[SI, SO, E, A], fe: SI => (SO, E), to: A => Option[B], from: B => Option[A]) extends Grammar[SI, SO, E, B]
-    private[parserz] case class Filter[SI, SO, E, A](value: Grammar[SI, SO, E, A], e: E, filter: Expr[A]) extends Grammar[SI, SO, E, A]
-    private[parserz] case class FilterES[SI, SO, E, A](value: Grammar[SI, SO, E, A], fe: SI => (SO, E), filter: Expr[A]) extends Grammar[SI, SO, E, A]
-    private[parserz] case class Zip[SI, SO, E, A, B](left: Grammar[SI, SO, E, A], right: Grammar[SI, SO, E, B]) extends Grammar[SI, SO, E, A /\ B]
-    private[parserz] case class ZipL[SI, SO, E, A, B](left: Grammar[SI, SO, E, A], right: Grammar[SI, SO, E, B], b: B) extends Grammar[SI, SO, E, A]
-    private[parserz] case class ZipR[SI, SO, E, A, B](left: Grammar[SI, SO, E, A], right: Grammar[SI, SO, E, B], a: A) extends Grammar[SI, SO, E, B]
-    private[parserz] case class Alt[SI, SO, E, A, B](left: Grammar[SI, SO, E, A], right: Grammar[SI, SO, E, B]) extends Grammar[SI, SO, E, A \/ B]
-    private[parserz] case class Select[SI, SO, E, A, B](value: Grammar[SI, SO, E, A], f: A => Grammar[SI, SO, E, B], en: Enumerable[A]) extends Grammar[SI, SO, E, B]
-    private[parserz] case class Rep[SI, SO, E, A](value: Grammar[SI, SO, E, A]) extends Grammar[SI, SO, E, List[A]]
-    private[parserz] case class Rep1[SI, SO, E, A](value: Grammar[SI, SO, E, A]) extends Grammar[SI, SO, E, ::[A]]
+    object GADT {
+      private[parserz] case class Produce[SI, SO, E, A](a: A) extends Grammar[Any, Nothing, Nothing, A]
+      private[parserz] case class Consume[SI, SO, E, A](to: Input => E \/ (Input, A), from: ((Input, A)) => E \/ Input) extends Grammar[Any, Nothing, E, A]
+      private[parserz] case class ConsumeS[SI, SO, E, A](to: (SI, Input) => (SO, E \/ (Input, A)), from: (SI, (Input, A)) => (SO, E \/ Input)) extends Grammar[SI, SO, E, A]
+      private[parserz] case class Delay[SI, SO, E, A](delayed: () => Grammar[SI, SO, E, A]) extends Grammar[SI, SO, E, A]
+      private[parserz] case class Tag[SI, SO, E, A](value: Grammar[SI, SO, E, A], tag: String) extends Grammar[SI, SO, E, A]
+      private[parserz] case class Map[SI, SO, E, A, B](value: Grammar[SI, SO, E, A], to: A => E \/ B, from: B => E \/ A) extends Grammar[SI, SO, E, B]
+      private[parserz] case class MapS[SI, SO, E, A, B](value: Grammar[SI, SO, E, A], to: (SI, A) => (SO, E \/ B), from: (SI, B) => (SO, E \/ A)) extends Grammar[SI, SO, E, B]
+      private[parserz] case class MapES[SI, SO, E, A, B](value: Grammar[SI, SO, E, A], fe: SI => (SO, E), to: A => Option[B], from: B => Option[A]) extends Grammar[SI, SO, E, B]
+      private[parserz] case class Filter[SI, SO, E, A](value: Grammar[SI, SO, E, A], e: E, filter: Expr[A]) extends Grammar[SI, SO, E, A]
+      private[parserz] case class FilterES[SI, SO, E, A](value: Grammar[SI, SO, E, A], fe: SI => (SO, E), filter: Expr[A]) extends Grammar[SI, SO, E, A]
+      private[parserz] case class Zip[SI, SO, E, A, B](left: Grammar[SI, SO, E, A], right: Grammar[SI, SO, E, B]) extends Grammar[SI, SO, E, A /\ B]
+      private[parserz] case class ZipL[SI, SO, E, A, B](left: Grammar[SI, SO, E, A], right: Grammar[SI, SO, E, B], b: B) extends Grammar[SI, SO, E, A]
+      private[parserz] case class ZipR[SI, SO, E, A, B](left: Grammar[SI, SO, E, A], right: Grammar[SI, SO, E, B], a: A) extends Grammar[SI, SO, E, B]
+      private[parserz] case class Alt[SI, SO, E, A, B](left: Grammar[SI, SO, E, A], right: Grammar[SI, SO, E, B]) extends Grammar[SI, SO, E, A \/ B]
+      private[parserz] case class Select[SI, SO, E, A, B](value: Grammar[SI, SO, E, A], f: A => Grammar[SI, SO, E, B], en: Enumerable[A]) extends Grammar[SI, SO, E, B]
+      private[parserz] case class Rep[SI, SO, E, A](value: Grammar[SI, SO, E, A]) extends Grammar[SI, SO, E, List[A]]
+      private[parserz] case class Rep1[SI, SO, E, A](value: Grammar[SI, SO, E, A]) extends Grammar[SI, SO, E, ::[A]]
+    }
     // format: on
 
-    final val unit: Grammar[Any, Nothing, Nothing, Unit] =
-      Unit0()
+    final val unit: Grammar[Any, Nothing, Nothing, scala.Unit] =
+      GADT.Produce(())
 
     final def succeed[A](a: A): Grammar[Any, Nothing, Nothing, A] =
-      unit.map[A](_ => a, _ => ())
+      GADT.Produce(a)
 
     final def fail[E, A](e: E): Grammar[Any, Nothing, E, A] =
       unit.mapPartial(e)(PartialFunction.empty, PartialFunction.empty)
@@ -117,13 +132,13 @@ trait ParsersModule extends ExprModule {
       to: (SI, Input) => (SO, E \/ (Input, A)),
       from: (SI, (Input, A)) => (SO, E \/ Input)
     ): Grammar[SI, SO, E, A] =
-      ConsumeS(to, from)
+      GADT.ConsumeS(to, from)
 
     final def consumeStatefullyOption[SI, SO, E, A](e: E)(
       to: (SI, Input) => (SO, Option[(Input, A)]),
       from: (SI, (Input, A)) => (SO, Option[Input])
     ): Grammar[SI, SO, E, A] =
-      consumeStatefully(
+      GADT.ConsumeS(
         { (si: SI, i: Input) =>
           val (so, r) = to(si, i)
           (so, r.map(Right(_)).getOrElse(Left(e)))
@@ -134,15 +149,16 @@ trait ParsersModule extends ExprModule {
       )
 
     final def consume[E, A](to: Input => E \/ (Input, A), from: ((Input, A)) => E \/ Input): Grammar[Any, Nothing, E, A] =
-      Consume(to, from)
+      GADT.Consume(to, from)
 
-    final def consumeOption[E, A](
-      e: E
-    )(to: Input => Option[(Input, A)], from: ((Input, A)) => Option[Input]): Grammar[Any, Nothing, E, A] =
-      consume(asEither(e)(to), asEither(e)(from))
+    final def consumePure[E, A](to: Input => (Input, A), from: ((Input, A)) => Input): Grammar[Any, Nothing, E, A] =
+      GADT.Consume(i => Right(to(i)), in => Right(from(in)))
+
+    final def consumeOption[E, A](e: E)(to: Input => Option[(Input, A)], from: ((Input, A)) => Option[Input]): Grammar[Any, Nothing, E, A] =
+      GADT.Consume(asEither(e)(to), asEither(e)(from))
 
     final def delay[SI, SO, E, A](g: => Grammar[SI, SO, E, A]): Grammar[SI, SO, E, A] =
-      Delay(() => g)
+      GADT.Delay(() => g)
 
     private def asEither[E, A, B](e: E)(f: A => Option[B]): A => E \/ B =
       f(_).map(Right(_)).getOrElse(Left(e))
@@ -156,9 +172,10 @@ trait ParsersModule extends ExprModule {
 
   trait GrammarSyntax {
 
-    implicit final class ToGrammarOps1(self: String) {
+    implicit final class ToStringOps1(self: String) {
 
-      def @@ [SI, SO, E, A](g: Grammar[SI, SO, E, A]): Grammar[SI, SO, E, A] = g @@ self
+      def @@ [SI, SO, E, A](g: Grammar[SI, SO, E, A]): Grammar[SI, SO, E, A] =
+        g @@ self
     }
 
     implicit final class ToZipOps1[SI, SO, E, A, B](self: (Grammar[SI, SO, E, A], A)) {
@@ -167,7 +184,13 @@ trait ParsersModule extends ExprModule {
         self._1.zipR(self._2, that)
     }
 
-    implicit final class ToFoldOps1[SI, SO, E, A, B](self: Grammar[SI, SO, E, (A, List[B])]) {
+    implicit final class ToGrammarOps1[SI, SO, E, A, B](self: Grammar[SI, SO, E, List[A]]) {
+
+      def orEmpty: Grammar[SI, SO, E, List[A]] =
+        self.recover(Nil)
+    }
+
+    implicit final class ToGrammarOps2[SI, SO, E, A, B](self: Grammar[SI, SO, E, (A, List[B])]) {
 
       def foldLeft(fold: (A, B) => A, unfold: A =?> (A, B)): Grammar[SI, SO, E, A] =
         self.map(
@@ -189,19 +212,19 @@ trait ParsersModule extends ExprModule {
 
   final def parser[S, E, A](grammar: Grammar[S, S, E, A]): (S, Input) => (S, E \/ (Input, A)) =
     grammar match {
-      case Grammar.Unit0()         => (s: S, i: Input) => (s, Right((i, ())))
-      case Grammar.Consume(to, _)  => (s: S, i: Input) => (s, to(i))
-      case Grammar.ConsumeS(to, _) => (s: S, i: Input) => to(s, i)
-      case Grammar.Tag(value, _)   => (s: S, i: Input) => parser(value)(s, i)
-      case Grammar.Delay(delayed)  => (s: S, i: Input) => parser(delayed())(s, i)
+      case Grammar.GADT.Produce(a)      => (s: S, i: Input) => (s, Right((i, a)))
+      case Grammar.GADT.Consume(to, _)  => (s: S, i: Input) => (s, to(i))
+      case Grammar.GADT.ConsumeS(to, _) => (s: S, i: Input) => to(s, i)
+      case Grammar.GADT.Tag(value, _)   => (s: S, i: Input) => parser(value)(s, i)
+      case Grammar.GADT.Delay(delayed)  => (s: S, i: Input) => parser(delayed())(s, i)
 
-      case Grammar.Map(value, to, _) =>
+      case Grammar.GADT.Map(value, to, _) =>
         (s: S, i: Input) => {
           val (s1, res1) = parser(value)(s, i)
           (s1, res1.flatMap { case (i1, a) => to(a).map(i1 -> _) })
         }
 
-      case Grammar.MapS(value, to, _) =>
+      case Grammar.GADT.MapS(value, to, _) =>
         (s: S, i: Input) => {
           val (s1, res1) = parser(value)(s, i)
           res1.fold(
@@ -210,7 +233,7 @@ trait ParsersModule extends ExprModule {
           )
         }
 
-      case Grammar.MapES(value, es, to, _) =>
+      case Grammar.GADT.MapES(value, es, to, _) =>
         (s: S, i: Input) => {
           val (s1, res1) = parser(value)(s, i)
           res1 match {
@@ -228,7 +251,7 @@ trait ParsersModule extends ExprModule {
           }
         }
 
-      case Grammar.Filter(value, e, expr) =>
+      case Grammar.GADT.Filter(value, e, expr) =>
         (s: S, i: Input) => {
           val (s1, res1) = parser(value)(s, i)
           s1 -> res1.flatMap {
@@ -238,7 +261,7 @@ trait ParsersModule extends ExprModule {
           }
         }
 
-      case Grammar.FilterES(value, es, expr) =>
+      case Grammar.GADT.FilterES(value, es, expr) =>
         (s: S, i: Input) => {
           val (s1, res1) = parser(value)(s, i)
           res1 match {
@@ -254,7 +277,7 @@ trait ParsersModule extends ExprModule {
           }
         }
 
-      case zip: Grammar.Zip[S, S, E, ta, tb] =>
+      case zip: Grammar.GADT.Zip[S, S, E, ta, tb] =>
         (s: S, i: Input) => {
           val (s1, res1): (S, E \/ (Input, ta)) = parser(zip.left)(s, i)
           val ret: (S, E \/ (Input, (ta, tb))) = res1 match {
@@ -266,7 +289,7 @@ trait ParsersModule extends ExprModule {
           ret
         }
 
-      case zip: Grammar.ZipL[S, S, E, ta, tb] =>
+      case zip: Grammar.GADT.ZipL[S, S, E, ta, tb] =>
         (s: S, i: Input) => {
           val (s1, res1): (S, E \/ (Input, ta)) = parser(zip.left)(s, i)
           res1 match {
@@ -277,7 +300,7 @@ trait ParsersModule extends ExprModule {
           }
         }
 
-      case zip: Grammar.ZipR[S, S, E, ta, tb] =>
+      case zip: Grammar.GADT.ZipR[S, S, E, ta, tb] =>
         (s: S, i: Input) => {
           val (s1, res1): (S, E \/ (Input, ta)) = parser(zip.left)(s, i)
           res1 match {
@@ -286,7 +309,7 @@ trait ParsersModule extends ExprModule {
           }
         }
 
-      case alt: Grammar.Alt[S, S, E, ta, tb] =>
+      case alt: Grammar.GADT.Alt[S, S, E, ta, tb] =>
         (s: S, i: Input) => {
           val (s1, res1): (S, E \/ (Input, ta)) = parser(alt.left)(s, i)
           val ret: (S, E \/ (Input, ta \/ tb)) = res1 match {
@@ -298,7 +321,7 @@ trait ParsersModule extends ExprModule {
           ret
         }
 
-      case sel: Grammar.Select[S, S, E, _, _] =>
+      case sel: Grammar.GADT.Select[S, S, E, _, _] =>
         (s: S, i: Input) => {
           parser(sel.value)(s, i) match {
             case (s1, Left(e))        => (s1, Left(e))
@@ -306,13 +329,13 @@ trait ParsersModule extends ExprModule {
           }
         }
 
-      case rep: Grammar.Rep[S, S, E, ta] =>
+      case rep: Grammar.GADT.Rep[S, S, E, ta] =>
         (s: S, i: Input) => {
           val (s1, i1, as) = repeatParse(rep.value)(s, i, Nil)
           (s1, Right((i1, as.reverse)))
         }
 
-      case rep: Grammar.Rep1[S, S, E, ta] =>
+      case rep: Grammar.GADT.Rep1[S, S, E, ta] =>
         (s: S, i: Input) => {
           val res1: (S, E \/ (Input, ta)) = parser(rep.value)(s, i)
           val res2: (S, E \/ (Input, ::[ta])) = res1 match {
@@ -335,19 +358,19 @@ trait ParsersModule extends ExprModule {
 
   final def printer[S, E, A](grammar: Grammar[S, S, E, A]): (S, (Input, A)) => (S, E \/ Input) =
     grammar match {
-      case Grammar.Unit0()           => (s: S, a: (Input, A)) => (s, Right(a._1))
-      case Grammar.Consume(_, from)  => (s: S, a: (Input, A)) => (s, from(a))
-      case Grammar.ConsumeS(_, from) => (s: S, a: (Input, A)) => from(s, a)
-      case Grammar.Tag(value, _)     => (s: S, a: (Input, A)) => printer(value)(s, a)
-      case Grammar.Delay(delayed)    => (s: S, a: (Input, A)) => printer(delayed())(s, a)
+      case Grammar.GADT.Produce(_)        => (s: S, in: (Input, A)) => (s, Right(in._1))
+      case Grammar.GADT.Consume(_, from)  => (s: S, in: (Input, A)) => (s, from(in))
+      case Grammar.GADT.ConsumeS(_, from) => (s: S, in: (Input, A)) => from(s, in)
+      case Grammar.GADT.Tag(value, _)     => (s: S, in: (Input, A)) => printer(value)(s, in)
+      case Grammar.GADT.Delay(delayed)    => (s: S, in: (Input, A)) => printer(delayed())(s, in)
 
-      case Grammar.Map(value, _, from) =>
+      case Grammar.GADT.Map(value, _, from) =>
         (s: S, in: (Input, A)) => {
           val (i, a) = in
           from(a).fold(e => s -> Left(e), b => printer(value)(s, (i, b)))
         }
 
-      case Grammar.MapS(value, _, from) =>
+      case Grammar.GADT.MapS(value, _, from) =>
         (s: S, in: (Input, A)) => {
           val (i, a)     = in
           val (s1, res1) = from(s, a)
@@ -357,7 +380,7 @@ trait ParsersModule extends ExprModule {
           )
         }
 
-      case Grammar.MapES(value, es, _, from) =>
+      case Grammar.GADT.MapES(value, es, _, from) =>
         (s: S, in: (Input, A)) => {
           val (i, a) = in
           from(a)
@@ -370,14 +393,14 @@ trait ParsersModule extends ExprModule {
             }
         }
 
-      case Grammar.Filter(value, e, expr) =>
+      case Grammar.GADT.Filter(value, e, expr) =>
         (s: S, in: (Input, A)) => {
           val (i, a) = in
           if (exprFilter(expr)(a)) printer(value)(s, (i, a))
           else s -> Left(e)
         }
 
-      case Grammar.FilterES(value, es, expr) =>
+      case Grammar.GADT.FilterES(value, es, expr) =>
         (s: S, in: (Input, A)) => {
           val (i, a) = in
           if (exprFilter(expr)(a)) printer(value)(s, (i, a))
@@ -387,7 +410,7 @@ trait ParsersModule extends ExprModule {
           }
         }
 
-      case zip: Grammar.Zip[S, S, E, ta, tb] =>
+      case zip: Grammar.GADT.Zip[S, S, E, ta, tb] =>
         (s: S, in: (Input, ta /\ tb)) => {
           val (i, (a, b)) = in
           val (s1, res1)  = printer(zip.left)(s, (i, a))
@@ -397,7 +420,7 @@ trait ParsersModule extends ExprModule {
           }
         }
 
-      case zip: Grammar.ZipL[S, S, E, ta, tb] =>
+      case zip: Grammar.GADT.ZipL[S, S, E, ta, tb] =>
         (s: S, in: (Input, ta)) => {
           val (i, a)     = in
           val (s1, res1) = printer(zip.left)(s, (i, a))
@@ -407,7 +430,7 @@ trait ParsersModule extends ExprModule {
           }
         }
 
-      case zip: Grammar.ZipR[S, S, E, ta, tb] =>
+      case zip: Grammar.GADT.ZipR[S, S, E, ta, tb] =>
         (s: S, in: (Input, tb)) => {
           val (i, b)     = in
           val (s1, res1) = printer(zip.left)(s, (i, zip.a))
@@ -417,7 +440,7 @@ trait ParsersModule extends ExprModule {
           }
         }
 
-      case alt: Grammar.Alt[S, S, E, ta, tb] =>
+      case alt: Grammar.GADT.Alt[S, S, E, ta, tb] =>
         (s: S, in: (Input, ta \/ tb)) => {
           val (i, ab) = in
           ab match {
@@ -426,7 +449,7 @@ trait ParsersModule extends ExprModule {
           }
         }
 
-      case sel: Grammar.Select[S, S, E, ta, tb] =>
+      case sel: Grammar.GADT.Select[S, S, E, ta, tb] =>
         (s: S, in: (Input, tb)) => {
           val (i, b) = in
           val range = sel.en.range(sel.en.min, sel.en.max)
@@ -444,13 +467,13 @@ trait ParsersModule extends ExprModule {
           }
         }
 
-      case rep: Grammar.Rep[S, S, E, ta] =>
+      case rep: Grammar.GADT.Rep[S, S, E, ta] =>
         (s: S, in: (Input, List[ta])) => {
           val (i, la) = in
           repeatPrint(rep.value)(s, i, la)
         }
 
-      case rep: Grammar.Rep1[S, S, E, ta] =>
+      case rep: Grammar.GADT.Rep1[S, S, E, ta] =>
         (s: S, in: (Input, List[ta])) => {
           val (i, la) = in
           repeatPrint(rep.value)(s, i, la)
@@ -466,23 +489,23 @@ trait ParsersModule extends ExprModule {
   final def bnf[SI, SO, E, A](grammar: Grammar[SI, SO, E, A]): List[String] = {
     def tagOrExpand[A1](g: Grammar[SI, SO, E, A1]): String =
       g match {
-        case Grammar.Unit0()               => ""
-        case Grammar.Consume(_, _)         => ""
-        case Grammar.ConsumeS(_, _)        => ""
-        case Grammar.Delay(delayed)        => tagOrExpand(delayed())
-        case Grammar.Tag(_, tag)           => "<" + tag + ">"
-        case Grammar.Map(value, _, _)      => tagOrExpand(value)
-        case Grammar.MapS(value, _, _)     => tagOrExpand(value)
-        case Grammar.MapES(value, _, _, _) => tagOrExpand(value)
-        case Grammar.Filter(v, _, expr)    => Some(exprBNF(expr)).filter(_.nonEmpty).getOrElse(tagOrExpand(v))
-        case Grammar.FilterES(v, _, expr)  => Some(exprBNF(expr)).filter(_.nonEmpty).getOrElse(tagOrExpand(v))
-        case Grammar.Zip(left, right)      => tagOrExpand(left) + " " + tagOrExpand(right)
-        case Grammar.ZipL(left, right, _)  => tagOrExpand(left) + " " + tagOrExpand(right)
-        case Grammar.ZipR(left, right, _)  => tagOrExpand(left) + " " + tagOrExpand(right)
-        case Grammar.Alt(left, right)      => "(" + tagOrExpand(left) + " | " + tagOrExpand(right) + ")"
-        case Grammar.Select(_, f, en)      => en.range(en.min, en.max).map(a => tagOrExpand(f(a))).filter(_.nonEmpty).mkString("(", " | ", ")")
-        case Grammar.Rep(value)            => "List(" + tagOrExpand(value) + ")"
-        case Grammar.Rep1(value)           => "NEL(" + tagOrExpand(value) + ")"
+        case Grammar.GADT.Produce(_)            => ""
+        case Grammar.GADT.Consume(_, _)         => ""
+        case Grammar.GADT.ConsumeS(_, _)        => ""
+        case Grammar.GADT.Delay(delayed)        => tagOrExpand(delayed())
+        case Grammar.GADT.Tag(_, tag)           => "<" + tag + ">"
+        case Grammar.GADT.Map(value, _, _)      => tagOrExpand(value)
+        case Grammar.GADT.MapS(value, _, _)     => tagOrExpand(value)
+        case Grammar.GADT.MapES(value, _, _, _) => tagOrExpand(value)
+        case Grammar.GADT.Filter(v, _, expr)    => Some(exprBNF(expr)).filter(_.nonEmpty).getOrElse(tagOrExpand(v))
+        case Grammar.GADT.FilterES(v, _, expr)  => Some(exprBNF(expr)).filter(_.nonEmpty).getOrElse(tagOrExpand(v))
+        case Grammar.GADT.Zip(left, right)      => tagOrExpand(left) + " " + tagOrExpand(right)
+        case Grammar.GADT.ZipL(left, right, _)  => tagOrExpand(left) + " " + tagOrExpand(right)
+        case Grammar.GADT.ZipR(left, right, _)  => tagOrExpand(left) + " " + tagOrExpand(right)
+        case Grammar.GADT.Alt(left, right)      => "(" + tagOrExpand(left) + " | " + tagOrExpand(right) + ")"
+        case Grammar.GADT.Select(_, f, en)      => en.range(en.min, en.max).map(a => tagOrExpand(f(a))).filter(_.nonEmpty).mkString("(", " | ", ")")
+        case Grammar.GADT.Rep(value)            => "List(" + tagOrExpand(value) + ")"
+        case Grammar.GADT.Rep1(value)           => "NEL(" + tagOrExpand(value) + ")"
       }
 
     val visited: mutable.Set[Grammar[SI, SO, E, _]] = mutable.Set.empty
@@ -493,23 +516,23 @@ trait ParsersModule extends ExprModule {
       else {
         visited += g
         g match {
-          case Grammar.Unit0()               => Nil
-          case Grammar.Consume(_, _)         => Nil
-          case Grammar.ConsumeS(_, _)        => Nil
-          case Grammar.Delay(delayed)        => show(delayed())
-          case Grammar.Tag(value, tag)       => show(value) ::: List(tag -> tagOrExpand(value))
-          case Grammar.Map(value, _, _)      => show(value)
-          case Grammar.MapS(value, _, _)     => show(value)
-          case Grammar.MapES(value, _, _, _) => show(value)
-          case Grammar.Filter(value, _, _)   => show(value)
-          case Grammar.FilterES(value, _, _) => show(value)
-          case Grammar.Zip(left, right)      => show(left) ::: show(right)
-          case Grammar.ZipL(left, right, _)  => show(left) ::: show(right)
-          case Grammar.ZipR(left, right, _)  => show(left) ::: show(right)
-          case Grammar.Alt(left, right)      => show(left) ::: show(right)
-          case Grammar.Select(value, _, _)   => show(value)
-          case Grammar.Rep(value)            => show(value)
-          case Grammar.Rep1(value)           => show(value)
+          case Grammar.GADT.Produce(_)            => Nil
+          case Grammar.GADT.Consume(_, _)         => Nil
+          case Grammar.GADT.ConsumeS(_, _)        => Nil
+          case Grammar.GADT.Delay(delayed)        => show(delayed())
+          case Grammar.GADT.Tag(value, tag)       => show(value) ::: List(tag -> tagOrExpand(value))
+          case Grammar.GADT.Map(value, _, _)      => show(value)
+          case Grammar.GADT.MapS(value, _, _)     => show(value)
+          case Grammar.GADT.MapES(value, _, _, _) => show(value)
+          case Grammar.GADT.Filter(value, _, _)   => show(value)
+          case Grammar.GADT.FilterES(value, _, _) => show(value)
+          case Grammar.GADT.Zip(left, right)      => show(left) ::: show(right)
+          case Grammar.GADT.ZipL(left, right, _)  => show(left) ::: show(right)
+          case Grammar.GADT.ZipR(left, right, _)  => show(left) ::: show(right)
+          case Grammar.GADT.Alt(left, right)      => show(left) ::: show(right)
+          case Grammar.GADT.Select(value, _, _)   => show(value)
+          case Grammar.GADT.Rep(value)            => show(value)
+          case Grammar.GADT.Rep1(value)           => show(value)
         }
       }
 
