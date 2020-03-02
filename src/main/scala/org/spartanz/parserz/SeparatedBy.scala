@@ -45,4 +45,20 @@ object SeparatedBy {
     val values: List[A] = head :: tail.values
     val separators: List[S] = separator :: tail.separators
   }
+
+  def fromList[A, S](values: List[A], separator: S): SeparatedBy[A, S] =
+    values match {
+      case Nil    => Empty
+      case h :: t => SeparatedBy1.fromNEL(::(h, t),  separator)
+    }
+}
+
+object SeparatedBy1 {
+
+  def fromNEL[A, S](values: ::[A], separator: S): SeparatedBy1[A, S] = {
+    val reversed: List[A] = values.reverse
+    reversed.tail.foldLeft[SeparatedBy1[A, S]](SeparatedBy.One(reversed.head)) {
+      case (sep1, a) => sep1.prepend(a, separator)
+    }
+  }
 }
