@@ -508,13 +508,8 @@ trait ParsersModule extends ExprModule {
       case sep: Grammar.GADT.Sep[S, S, E, ta, ts] =>
         (s: S, in: (Input, SeparatedBy[ta, ts])) =>
           in match {
-            case (i, SeparatedBy.Empty)     => (s, Right(i))
-            case (i, SeparatedBy.One(head)) => printer(sep.value)(s, (i, head))
-            case (i, SeparatedBy.Many(head, ss, tail)) =>
-              printer(sep.value)(s, (i, head)) match {
-                case (s1, Left(e1))  => (s1, Left(e1))
-                case (s1, Right(i1)) => repeatPrint(sep.sep, sep.value)(s1, i1, ss, tail)
-              }
+            case (i, SeparatedBy.Empty)       => (s, Right(i))
+            case (i, sb1: SeparatedBy1[_, _]) => repeatPrint(sep.value, sep.sep)(s, i, sb1)
           }
     }
 
@@ -525,17 +520,15 @@ trait ParsersModule extends ExprModule {
     }
 
   @tailrec
-  private def repeatPrint[S, E, A, B](g1: Grammar[S, S, E, B], g2: Grammar[S, S, E, A])(s: S, i: Input, sep: B, sb1: SeparatedBy1[A, B]): (S, E \/ Input) =
-    printer(g1)(s, (i, sep)) match {
-      case (s1, Left(e1))  => (s1, Left(e1))
-      case (s1, Right(i1)) => sb1 match {
-        case SeparatedBy.One(head) =>
-          printer(g2)(s1, (i1, head))
-        case SeparatedBy.Many(head, sep, tail) =>
-          printer(g2)(s1, (i1, head)) match {
-            case (s2, Left(e2))  => (s2, Left(e2))
-            case (s2, Right(i2)) => repeatPrint(g1, g2)(s2, i2, sep, tail)
-          }
+  private def repeatPrint[S, E, A, B](g1: Grammar[S, S, E, A], g2: Grammar[S, S, E, B])(s: S, i: Input, sb1: SeparatedBy1[A, B]): (S, E \/ Input) =
+    sb1 match {
+      case SeparatedBy.One(head)             => printer(g1)(s, (i, head))
+      case SeparatedBy.Many(head, sep, tail) => printer(g1)(s, (i, head)) match {
+        case (s1, Left(e1))  => (s1, Left(e1))
+        case (s1, Right(i1)) => printer(g2)(s1, (i1, sep)) match {
+          case (s2, Left(e2))  => (s2, Left(e2))
+          case (s2, Right(i2)) => repeatPrint(g1, g2)(s2, i2, tail)
+        }
       }
     }
 

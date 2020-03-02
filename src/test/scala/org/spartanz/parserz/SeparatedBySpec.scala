@@ -57,6 +57,8 @@ class SeparatedBySpec extends Specification {
       print(sequence)(SeparatedBy('A', '+', SeparatedBy('B'))) must_=== Right("A+B")
       print(sequence)(SeparatedBy('A', '?', SeparatedBy('B'))) must_=== Left("wrong separator")
       print(sequence)(SeparatedBy('A', '-', SeparatedBy('E'))) must_=== Left("expected: [A-D]")
+      print(sequence)(SeparatedBy('E', '-', SeparatedBy('A'))) must_=== Left("expected: [A-D]")
+      print(sequence)(SeparatedBy('A', '-', SeparatedBy('E', '-', SeparatedBy('C')))) must_=== Left("expected: [A-D]")
       print(sequence)(SeparatedBy('A', '-', SeparatedBy('B', '-', SeparatedBy('C')))) must_=== Right("A-B-C")
     }
   }
