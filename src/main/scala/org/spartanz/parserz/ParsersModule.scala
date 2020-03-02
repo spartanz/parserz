@@ -18,6 +18,9 @@ trait ParsersModule extends ExprModule {
     final def mapOption[E1 >: E, B](e: E1)(to: A => Option[B], from: B => Option[A]): Grammar[SI, SO, E1, B] =
       Map[SI, SO, E1, A, B](self, asEither(e)(to), asEither(e)(from))
 
+    final def mapEither[E1 >: E, B](to: A => E1 \/ B, from: B => E1 \/ A): Grammar[SI, SO, E1, B] =
+      Map[SI, SO, E1, A, B](self, to, from)
+
     final def mapPartial[E1 >: E, B](e: E1)(to: A =?> B, from: B =?> A): Grammar[SI, SO, E1, B] =
       Map[SI, SO, E1, A, B](self, asEither(e)(to.lift), asEither(e)(from.lift))
 
