@@ -60,17 +60,11 @@ object LanguageExampleSpec {
       }
     )
 
-    val args: G[List[Exp]] = "arguments" @@ (expr ~ ((comma, `,`) ~> expr).rep).option.map({
-      case Some((e1, en)) => e1 :: en
-      case None           => Nil
-    }, {
-      case Nil      => None
-      case e1 :: en => Some((e1, en))
-    })
+    val args: G[SeparatedBy[Exp, Char]] = "arguments" @@ expr.separated(comma)
 
     val fun: G[Fun] = "function" @@ (name ~ ((paren1, `(`) ~> args <~ (`)`, paren2))).map(
-      { case (name, exp)    => Fun(name, exp) },
-      { case Fun(name, exp) => (name, exp) }
+      { case (name, args)    => Fun(name, args.values) },
+      { case Fun(name, args) => (name, SeparatedBy.fromList(args, `,`)) }
     )
 
     lazy val expr: G[Exp] = "expr" @@ delay {
@@ -108,7 +102,10 @@ class LanguageExampleSpec extends Specification {
   "a val" in {
     assert("12", Val(::('1', List('2'))))
   }
-  "a fun" in {
+  "a fun without params" in {
+    assert("a()", Fun("a", List()))
+  }
+  "a fun with params" in {
     assert("a(12)", Fun("a", List(Val(::('1', List('2'))))))
   }
   "minus" in {
@@ -151,7 +148,7 @@ class LanguageExampleSpec extends Specification {
         |<symbolic> ::= ( "+" | "-" )
         |<alpha> ::= <char>
         |<name> ::= (<symbolic> | NEL(<alpha>))
-        |<arguments> ::= (<expr> List("," <expr>) | )
+        |<arguments> ::= Separated(<expr>, ",")
         |<function> ::= <name> "(" <arguments> ")"
         |<digit> ::= <char>
         |<input> ::= NEL(<digit>)
