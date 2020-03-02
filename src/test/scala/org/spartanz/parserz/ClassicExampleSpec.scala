@@ -43,9 +43,9 @@ object ClassicExampleSpec {
     val paren1: G[Char] = char.filter("expected: open paren")(===(`(`))
     val paren2: G[Char] = char.filter("expected: close paren")(===(`)`))
 
-    val plus: G[Operator] = "+" @@ char.mapPartial("expected: '+'")(
-      { case '+' => Add },
-      { case Add => '+' }
+    val plus: G[Operator] = "+" @@ char.mapEither(
+      { case '+' => Right(Add); case c => Left(s"expected: '+', got '$c'") },
+      { case Add => Right('+'); case o => Left(s"expected: Add, got $o") }
     )
 
     val star: G[Operator] = "*" @@ char.mapOption("expected: '*'")(
