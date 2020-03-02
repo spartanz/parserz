@@ -88,6 +88,8 @@ trait ParsersModule extends ExprModule {
 
     final def rep1: Grammar[SI, SO, E, ::[A]] = Rep1(self)
 
+    final def separated[SI1 <: SI, SO1 >: SO, E1 >: E, S](by: Grammar[SI1, SO1, E1, S]): Grammar[SI1, SO1, E1, SeparatedBy[A, S]] = Sep(self, by)
+
     final def @@ (tag: String): Grammar[SI, SO, E, A] = Tag(self, tag)
 
     final def tag(tag: String): Grammar[SI, SO, E, A] = self @@ tag
@@ -113,6 +115,7 @@ trait ParsersModule extends ExprModule {
       private[parserz] case class Select[SI, SO, E, A, B](value: Grammar[SI, SO, E, A], f: A => Grammar[SI, SO, E, B], en: Enumerable[A]) extends Grammar[SI, SO, E, B]
       private[parserz] case class Rep[SI, SO, E, A](value: Grammar[SI, SO, E, A]) extends Grammar[SI, SO, E, List[A]]
       private[parserz] case class Rep1[SI, SO, E, A](value: Grammar[SI, SO, E, A]) extends Grammar[SI, SO, E, ::[A]]
+      private[parserz] case class Sep[SI, SO, E, A, S](value: Grammar[SI, SO, E, A], sep: Grammar[SI, SO, E, S]) extends Grammar[SI, SO, E, SeparatedBy[A, S]]
     }
     // format: on
 
@@ -347,6 +350,19 @@ trait ParsersModule extends ExprModule {
           }
           res2
         }
+
+      case sep: Grammar.GADT.Sep[S, S, E, ta, ts] =>
+        (s: S, i: Input) => {
+          val (s1, res1): (S, E \/ (Input, ta)) = parser(sep.value)(s, i)
+          val res2: (S, E \/ (Input, SeparatedBy[ta, ts])) = res1 match {
+            case Left(_) =>
+              (s1, Right((i, SeparatedBy())))
+            case Right((i1, a1)) =>
+              val (s2, i2, as) = repeatParse(sep.sep, sep.value)(s1, i1, SeparatedBy(a1))
+              (s2, Right((i2, as.reverse)))
+          }
+          res2
+        }
     }
 
   @tailrec
@@ -354,6 +370,16 @@ trait ParsersModule extends ExprModule {
     parser(g)(s, i) match {
       case (s1, Left(_))        => (s1, i, as)
       case (s1, Right((i1, a))) => repeatParse(g)(s1, i1, a :: as)
+    }
+
+  @tailrec
+  private def repeatParse[S, E, A, B](g1: Grammar[S, S, E, B], g2: Grammar[S, S, E, A])(s: S, i: Input, as: SeparatedBy1[A, B]): (S, Input, SeparatedBy1[A, B]) =
+    parser(g1)(s, i) match {
+      case (s1, Left(_))        => (s1, i, as)
+      case (s1, Right((i1, b))) => parser(g2)(s1, i1) match {
+        case (s2, Left(_))        => (s2, i, as)
+        case (s2, Right((i2, a))) => repeatParse(g1, g2)(s2, i2, as.prepend(a, b))
+      }
     }
 
   final def printer[S, E, A](grammar: Grammar[S, S, E, A]): (S, (Input, A)) => (S, E \/ Input) =
@@ -478,12 +504,39 @@ trait ParsersModule extends ExprModule {
           val (i, la) = in
           repeatPrint(rep.value)(s, i, la)
         }
+
+      case sep: Grammar.GADT.Sep[S, S, E, ta, ts] =>
+        (s: S, in: (Input, SeparatedBy[ta, ts])) =>
+          in match {
+            case (i, SeparatedBy.Empty)     => (s, Right(i))
+            case (i, SeparatedBy.One(head)) => printer(sep.value)(s, (i, head))
+            case (i, SeparatedBy.Many(head, ss, tail)) =>
+              printer(sep.value)(s, (i, head)) match {
+                case (s1, Left(e1))  => (s1, Left(e1))
+                case (s1, Right(i1)) => repeatPrint(sep.sep, sep.value)(s1, i1, ss, tail)
+              }
+          }
     }
 
   private def repeatPrint[S, E, A](g: Grammar[S, S, E, A])(s: S, i: Input, as: List[A]): (S, E \/ Input) =
     as.foldLeft[(S, E \/ Input)](s -> Right(i)) {
       case ((s0, Left(e)), _)    => (s0, Left(e))
       case ((s0, Right(i0)), a0) => printer(g)(s0, (i0, a0))
+    }
+
+  @tailrec
+  private def repeatPrint[S, E, A, B](g1: Grammar[S, S, E, B], g2: Grammar[S, S, E, A])(s: S, i: Input, sep: B, sb1: SeparatedBy1[A, B]): (S, E \/ Input) =
+    printer(g1)(s, (i, sep)) match {
+      case (s1, Left(e1))  => (s1, Left(e1))
+      case (s1, Right(i1)) => sb1 match {
+        case SeparatedBy.One(head) =>
+          printer(g2)(s1, (i1, head))
+        case SeparatedBy.Many(head, sep, tail) =>
+          printer(g2)(s1, (i1, head)) match {
+            case (s2, Left(e2))  => (s2, Left(e2))
+            case (s2, Right(i2)) => repeatPrint(g1, g2)(s2, i2, sep, tail)
+          }
+      }
     }
 
   final def bnf[SI, SO, E, A](grammar: Grammar[SI, SO, E, A]): List[String] = {
@@ -506,6 +559,7 @@ trait ParsersModule extends ExprModule {
         case Grammar.GADT.Select(_, f, en)      => en.range(en.min, en.max).map(a => tagOrExpand(f(a))).filter(_.nonEmpty).mkString("(", " | ", ")")
         case Grammar.GADT.Rep(value)            => "List(" + tagOrExpand(value) + ")"
         case Grammar.GADT.Rep1(value)           => "NEL(" + tagOrExpand(value) + ")"
+        case Grammar.GADT.Sep(value, sep)       => "Separated(" + tagOrExpand(value) + ", " + tagOrExpand(sep) + ")"
       }
 
     val visited: mutable.Set[Grammar[SI, SO, E, _]] = mutable.Set.empty
@@ -533,6 +587,7 @@ trait ParsersModule extends ExprModule {
           case Grammar.GADT.Select(value, _, _)   => show(value)
           case Grammar.GADT.Rep(value)            => show(value)
           case Grammar.GADT.Rep1(value)           => show(value)
+          case Grammar.GADT.Sep(value, sep)       => show(value) ::: show(sep)
         }
       }
 
