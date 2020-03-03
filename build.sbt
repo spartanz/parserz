@@ -42,7 +42,8 @@ lazy val root =
       libraryDependencies ++= Seq(
         compilerPlugin(("org.typelevel" % "kind-projector" % "0.11.0").cross(CrossVersion.full)),
         compilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
-        "org.specs2" %% "specs2-core" % "4.8.0" % Test
+        "org.specs2" %% "specs2-core" % "4.8.0" % Test,
+        "com.lihaoyi" %% "fastparse" % "2.2.4" % Test,
       )
     )
     .enablePlugins(BuildInfoPlugin)
