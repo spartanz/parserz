@@ -64,9 +64,9 @@ class SeparatedBySpec extends Specification {
   }
 
   "extracted separators" in {
-    val res1 = parse(sequence)("A-B+C").right.get._2
+    val res1 = parse(sequence)("A-B+C").toOption.get._2
     res1.separators must_=== List('-', '+')
-    val res2 = parse(sequence)("A+B-C").right.get._2
+    val res2 = parse(sequence)("A+B-C").toOption.get._2
     res2.separators must_=== List('+', '-')
   }
 }

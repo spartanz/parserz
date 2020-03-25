@@ -41,7 +41,10 @@ lazy val root =
       scalacOptions --= Seq("-Yno-adapted-args", "-Ypartial-unification"),
       libraryDependencies ++= Seq(
         compilerPlugin(("org.typelevel" % "kind-projector" % "0.11.0").cross(CrossVersion.full)),
-        compilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
+        compilerPlugin(("com.github.ghik" % "silencer-plugin" % "1.6.0").cross(CrossVersion.full)),
+
+        ("com.github.ghik" % "silencer-lib" % "1.6.0" % Provided).cross(CrossVersion.full),
+
         "org.specs2" %% "specs2-core" % "4.8.0" % Test,
         "com.lihaoyi" %% "fastparse" % "2.2.4" % Test,
       )
