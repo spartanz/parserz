@@ -1,6 +1,7 @@
 package org.spartanz.parserz.compare
 
-import org.spartanz.parserz.{ParsersModule, \/}
+import org.spartanz.parserz.\/
+import org.spartanz.parserz.prototype.P2Module
 
 object ParserzJsonTest {
 
@@ -18,18 +19,17 @@ object ParserzJsonTest {
   }
 
 
-  object Parser extends ParsersModule {
+  object Parser extends P2Module {
     override type Input = List[Char]
+    override type S     = Unit
+    override type E     = String
   }
 
   import Parser.Grammar._
+  import Parser.Tools._
   import Parser.Expr._
   import Parser._
   import Js._
-
-  type S    = Unit
-  type E    = String
-  type G[A] = Grammar[Any, Nothing, E, A]
 
   def char(c: Char): G[Char] = consume(
     cs => if (cs.nonEmpty && cs.head == c) Right((cs.tail, c)) else Left("expected: " + c),
@@ -73,10 +73,13 @@ object ParserzJsonTest {
   val fractional: G[List[Char]] = (dot, '.') ~> digits
   val integral: G[List[Char]]   = digits
 
-  val num: G[Num] = (sign ~ integral ~ fractional.orEmpty ~ exponent.orEmpty).map(
-    { case (((s, l1), l2), l3) => Num((s.mkString + l1.mkString + l2.mkString + l3.mkString).toDouble) },
-    { case Num(_) => ??? }
-  )
+  implicit val numEquiv: Equiv[(((Option[Char], List[Char]), List[Char]), List[Char]), Num] =
+    Equiv.caseClass4(
+      { case (s, l1, l2, l3) => Num((s.mkString + l1.mkString + l2.mkString + l3.mkString).toDouble) },
+      { case Num(_) => ??? }
+    )
+
+  val num: G[Num] = toZ(sign ~ integral ~ fractional.orEmpty ~ exponent.orEmpty)
 
   val `null`: G[Null.type]   = token("null".toList).map( _ => Null,  _ => "null".toList)
   val `false`: G[False.type] = token("false".toList).map(_ => False, _ => "false".toList)

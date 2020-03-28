@@ -111,6 +111,7 @@ trait ParsersModule extends ExprModule {
       private[parserz] case class MapES[SI, SO, E, A, B](value: Grammar[SI, SO, E, A], fe: SI => (SO, E), to: A => Option[B], from: B => Option[A]) extends Grammar[SI, SO, E, B]
       private[parserz] case class Filter[SI, SO, E, A](value: Grammar[SI, SO, E, A], e: E, filter: Expr[A]) extends Grammar[SI, SO, E, A]
       private[parserz] case class FilterES[SI, SO, E, A](value: Grammar[SI, SO, E, A], fe: SI => (SO, E), filter: Expr[A]) extends Grammar[SI, SO, E, A]
+      private[parserz] case class ZipUnsafe[SI, SO, E](gs: Array[Grammar[SI, SO, E, Any]]) extends Grammar[SI, SO, E, Array[Any]]
       private[parserz] case class Zip[SI, SO, E, A, B](left: Grammar[SI, SO, E, A], right: Grammar[SI, SO, E, B]) extends Grammar[SI, SO, E, A /\ B]
       private[parserz] case class ZipL[SI, SO, E, A, B](left: Grammar[SI, SO, E, A], right: Grammar[SI, SO, E, B], b: B) extends Grammar[SI, SO, E, A]
       private[parserz] case class ZipR[SI, SO, E, A, B](left: Grammar[SI, SO, E, A], right: Grammar[SI, SO, E, B], a: A) extends Grammar[SI, SO, E, B]
@@ -283,6 +284,24 @@ trait ParsersModule extends ExprModule {
           }
         }
 
+      case Grammar.GADT.ZipUnsafe(gs) =>
+        (s: S, in: Input) => {
+          val size = gs.length
+          val arr: Array[Any] = Array.ofDim(size)
+          var i = 0
+          var state: S = s
+          var input: Input = in
+          var res: E \/ (Input, Array[Any]) = Right((input, arr))
+          while (i < size && res.isRight) {
+            val (s1, res1): (S, E \/ (Input, Any)) = parser(gs(i))(state, input)
+            res1.foreach { case (i1, v1) => input = i1; arr(i) = v1 }
+            state = s1
+            res = res1.map(_ => (input, arr))
+            i += 1
+          }
+          (state, res)
+        }
+
       case zip: Grammar.GADT.Zip[S, S, E, ta, tb] =>
         (s: S, i: Input) => {
           val (s1, res1): (S, E \/ (Input, ta)) = parser(zip.left)(s, i)
@@ -439,6 +458,24 @@ trait ParsersModule extends ExprModule {
           }
         }
 
+      case Grammar.GADT.ZipUnsafe(gs) =>
+        (s: S, in: (Input, Array[Any])) => {
+          val arr = in._2
+          val size = arr.length
+          var i = 0
+          var state: S = s
+          var input = in._1
+          var res: E \/ Input = Right(input)
+          while (i < size && res.isRight) {
+            val (s1: S, res1: Either[E, Input]) = printer(gs(i))(state, (input, arr(i)))
+            state = s1
+            res = res1
+            res.foreach(input = _)
+            i += 1
+          }
+          (state, res)
+        }
+
       case zip: Grammar.GADT.Zip[S, S, E, ta, tb] =>
         (s: S, in: (Input, ta /\ tb)) => {
           val (i, (a, b)) = in
@@ -548,6 +585,7 @@ trait ParsersModule extends ExprModule {
         case Grammar.GADT.MapES(value, _, _, _) => tagOrExpand(value)
         case Grammar.GADT.Filter(v, _, expr)    => Some(exprBNF(expr)).filter(_.nonEmpty).getOrElse(tagOrExpand(v))
         case Grammar.GADT.FilterES(v, _, expr)  => Some(exprBNF(expr)).filter(_.nonEmpty).getOrElse(tagOrExpand(v))
+        case Grammar.GADT.ZipUnsafe(gs)         => gs.map(tagOrExpand).mkString(" ")
         case Grammar.GADT.Zip(left, right)      => tagOrExpand(left) + " " + tagOrExpand(right)
         case Grammar.GADT.ZipL(left, right, _)  => tagOrExpand(left) + " " + tagOrExpand(right)
         case Grammar.GADT.ZipR(left, right, _)  => tagOrExpand(left) + " " + tagOrExpand(right)
@@ -576,6 +614,7 @@ trait ParsersModule extends ExprModule {
           case Grammar.GADT.MapES(value, _, _, _) => show(value)
           case Grammar.GADT.Filter(value, _, _)   => show(value)
           case Grammar.GADT.FilterES(value, _, _) => show(value)
+          case Grammar.GADT.ZipUnsafe(gs)         => gs.toList.flatMap(show)
           case Grammar.GADT.Zip(left, right)      => show(left) ::: show(right)
           case Grammar.GADT.ZipL(left, right, _)  => show(left) ::: show(right)
           case Grammar.GADT.ZipR(left, right, _)  => show(left) ::: show(right)
