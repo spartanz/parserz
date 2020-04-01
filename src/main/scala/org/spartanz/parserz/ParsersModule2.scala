@@ -207,50 +207,48 @@ trait ParsersModule2 {
 
 
 
-  private class ParserState[+E](var i: Int, var e: List[InOut.Error])
+  private class ParserState[+E](val input: Input, var i: Int, var e: List[InOut.Error])
 
   final def parser[S, E, A](grammar: Grammar[S, S, E, A]): (S, Input) => (S, E \/ A) = {
-    (s: S, i: Input) => {
-      val (so, res) = step(grammar)(new ParserState(0, Nil))(s, i)
-      (so, res.map(_._2))
+    (s: S, input: Input) => {
+      step(grammar, new ParserState(input, 0, Nil), s)
     }
   }
 
-  private def step[S, E, A](grammar: Grammar[S, S, E, A])(ps: ParserState[E]): (S, Input) => (S, E \/ (Input, A)) =
+  private def step[S, E, A](grammar: Grammar[S, S, E, A], ps: ParserState[E], s: S): (S, E \/ A) =
     grammar match {
-      case Grammar.GADT.Consume(c, cond, e) => (s: S, i: Input) => (s, {
+      case Grammar.GADT.Consume(c, cond, e) => (s, {
         import InOut.Consumer.Simple._
-        val cas = c.feed(c.create(), i, ps.i)
+        val cas = c.feed(c.create(), ps.input, ps.i)
         ps.i += extractCount(cas)
         try {
           val res = c.finish(extractState(cas))
-          if (cond == null || cond(res)) Right((i, res)) else Left(e)
+          if (cond == null || cond(res)) Right(res) else Left(e)
         }
         catch {
           case InOut.NoInput  => Left(e)
         }
       })
 
-      case Grammar.GADT.ConsumeMany(c, e) => (s: S, i: Input) => (s, {
+      case Grammar.GADT.ConsumeMany(c, e) => (s, {
         val state = c.create()
-        val count = c.feed(state, i, ps.i)
+        val count = c.feed(state, ps.input, ps.i)
         ps.i += count
         try {
-          val res = c.finish(state)
-          Right((i, res))
+          Right(c.finish(state))
         }
         catch {
           case InOut.NoInput  => Left(e)
         }
       })
 
-      case Grammar.GADT.ConsumeToken(c, e) => (s: S, i: Input) => (s, {
+      case Grammar.GADT.ConsumeToken(c, e) => (s, {
         val state = c.create()
-        val count = c.feed(state, i, ps.i)
+        val count = c.feed(state, ps.input, ps.i)
         ps.i += count
         try {
           val res = c.finish(state)
-          if (res == null) Left(e) else Right((i, res))
+          if (res == null) Left(e) else Right(res)
         }
         catch {
           case InOut.NotFound => Left(e)
@@ -259,175 +257,149 @@ trait ParsersModule2 {
       })
 
 
-      case Grammar.GADT.Produce(a)      => (s: S, i: Input) => (s, Right((i, a)))
-      case Grammar.GADT.Tag(value, _)   => (s: S, i: Input) => step(value)(ps)(s, i)
-      case Grammar.GADT.Delay(delayed)  => (s: S, i: Input) => step(delayed())(ps)(s, i)
+      case Grammar.GADT.Produce(a)      => (s, Right(a))
+      case Grammar.GADT.Tag(value, _)   => step(value, ps, s)
+      case Grammar.GADT.Delay(delayed)  => step(delayed(), ps, s)
 
       case Grammar.GADT.Map(value, to, _) =>
-        (s: S, i: Input) => {
-          val (s1, res1) = step(value)(ps)(s, i)
-          (s1, res1.flatMap { case (i1, a) => to(a).map(i1 -> _) })
-        }
+        val (s1, res1) = step(value, ps, s)
+        (s1, res1.flatMap(to))
 
       case Grammar.GADT.MapS(value, to, _) =>
-        (s: S, i: Input) => {
-          val (s1, res1) = step(value)(ps)(s, i)
-          res1.fold(
-            e => s1 -> Left(e),
-            { case (i1, a) => val (s2, res2) = to(s1, a); (s2, res2.map(i1 -> _)) }
-          )
-        }
+        val (s1, res1) = step(value, ps, s)
+        res1.fold(
+          e => s1 -> Left(e),
+          a => to(s1, a)
+        )
 
       case Grammar.GADT.MapES(value, es, to, _) =>
-        (s: S, i: Input) => {
-          val (s1, res1) = step(value)(ps)(s, i)
-          res1 match {
-            case Left(e) =>
-              s1 -> Left(e)
-            case Right((i1, a)) =>
-              to(a)
-                .map { b =>
-                  s1 -> Right(i1 -> b)
-                }
-                .getOrElse {
-                  val (s2, e) = es(s1)
-                  s2 -> Left(e)
-                }
-          }
-        }
-
-      case Grammar.GADT.Filter(value, e, expr) =>
-        (s: S, i: Input) => {
-          val (s1, res1) = step(value)(ps)(s, i)
-          s1 -> res1.flatMap {
-            case (i1, a) =>
-              if (exprFilter(expr)(a)) Right(i1 -> a)
-              else Left(e)
-          }
-        }
-
-      case Grammar.GADT.FilterES(value, es, expr) =>
-        (s: S, i: Input) => {
-          val (s1, res1) = step(value)(ps)(s, i)
-          res1 match {
-            case Left(e) =>
-              s1 -> Left(e)
-            case Right((i1, a)) =>
-              if (exprFilter(expr)(a))
-                s1 -> Right(i1 -> a)
-              else {
+        val (s1, res1) = step(value, ps, s)
+        res1 match {
+          case Left(e) =>
+            s1 -> Left(e)
+          case Right(a) =>
+            to(a)
+              .map { b =>
+                s1 -> Right(b)
+              }
+              .getOrElse {
                 val (s2, e) = es(s1)
                 s2 -> Left(e)
               }
-          }
+        }
+
+      case Grammar.GADT.Filter(value, e, expr) =>
+        val (s1, res1) = step(value, ps, s)
+        s1 -> res1.flatMap {
+          a =>
+            if (exprFilter(expr)(a)) Right(a)
+            else Left(e)
+        }
+
+      case Grammar.GADT.FilterES(value, es, expr) =>
+        val (s1, res1) = step(value, ps, s)
+        res1 match {
+          case Left(e) =>
+            s1 -> Left(e)
+          case Right(a) =>
+            if (exprFilter(expr)(a))
+              s1 -> Right(a)
+            else {
+              val (s2, e) = es(s1)
+              s2 -> Left(e)
+            }
         }
 
       case zip: Grammar.GADT.Zip[S, S, E, ta, tb] =>
-        (s: S, i: Input) => {
-          val (s1, res1): (S, E \/ (Input, ta)) = step(zip.left)(ps)(s, i)
-          val ret: (S, E \/ (Input, (ta, tb))) = res1 match {
-            case Left(e1)       => (s1, Left(e1))
-            case Right((i1, a)) =>
-              val (s2, res2) = step(zip.right)(ps)(s1, i1)
-              (s2, res2.map[(Input, (ta, tb))] { case (i2, b) => (i2, (a, b)) })
-          }
-          ret
+        val (s1, res1): (S, E \/ ta) = step(zip.left, ps, s)
+        val ret: (S, E \/ (ta, tb)) = res1 match {
+          case Left(e1) => (s1, Left(e1))
+          case Right(a) =>
+            val (s2, res2) = step(zip.right, ps, s1)
+            (s2, res2.map[(ta, tb)](b => (a, b)))
         }
+        ret
 
       case zip: Grammar.GADT.ZipL[S, S, E, ta, tb] =>
-        (s: S, i: Input) => {
-          val (s1, res1): (S, E \/ (Input, ta)) = step(zip.left)(ps)(s, i)
-          res1 match {
-            case Left(e1)       => (s1, Left(e1))
-            case Right((i1, a)) =>
-              val (s2, res2) = step(zip.right)(ps)(s1, i1)
-              (s2, res2.map { case (i2, _) => (i2, a) })
-          }
+        val (s1, res1): (S, E \/ ta) = step(zip.left, ps, s)
+        res1 match {
+          case Left(e1) => (s1, Left(e1))
+          case Right(a) =>
+            val (s2, res2) = step(zip.right, ps, s1)
+            (s2, res2.map(_ => a))
         }
 
       case zip: Grammar.GADT.ZipR[S, S, E, ta, tb] =>
-        (s: S, i: Input) => {
-          val (s1, res1): (S, E \/ (Input, ta)) = step(zip.left)(ps)(s, i)
-          res1 match {
-            case Left(e1)       => (s1, Left(e1))
-            case Right((i1, _)) => step(zip.right)(ps)(s1, i1)
-          }
+        val (s1, res1): (S, E \/ ta) = step(zip.left, ps, s)
+        res1 match {
+          case Left(e1) => (s1, Left(e1))
+          case Right(_) => step(zip.right, ps, s1)
         }
 
       case alt: Grammar.GADT.Alt[S, S, E, ta, tb] =>
-        (s: S, i: Input) => {
-          val checkpoint = ps.i
-          val (s1, res1): (S, E \/ (Input, ta)) = step(alt.left)(ps)(s, i)
-          val ret: (S, E \/ (Input, ta \/ tb)) = res1 match {
-            case Right((i1, a)) => (s1, Right((i1, Left(a))))
-            case Left(_)        =>
-              ps.i = checkpoint
-              val (s2, res2) = step(alt.right)(ps)(s1, i)
-              (s2, res2.map { case (i2, b) => (i2, Right(b)) })
-          }
-          ret
+        val checkpoint = ps.i
+        val (s1, res1): (S, E \/ ta) = step(alt.left, ps, s)
+        val ret: (S, E \/ (ta \/ tb)) = res1 match {
+          case Right(a) => (s1, Right(Left(a)))
+          case Left(_)  =>
+            ps.i = checkpoint
+            val (s2, res2) = step(alt.right, ps, s1)
+            (s2, res2.map(Right(_)))
         }
+        ret
 
       case sel: Grammar.GADT.Select[S, S, E, _, _] =>
-        (s: S, i: Input) => {
-          step(sel.value)(ps)(s, i) match {
-            case (s1, Left(e))        => (s1, Left(e))
-            case (s1, Right((i1, a))) => step(sel.f(a))(ps)(s1, i1)
-          }
+        step(sel.value, ps, s) match {
+          case (s1, Left(e))  => (s1, Left(e))
+          case (s1, Right(a)) => step(sel.f(a), ps, s1)
         }
 
       case rep: Grammar.GADT.Rep[S, S, E, ta] =>
-        (s: S, i: Input) => {
-          val (s1, i1, as) = repeatStep(rep.value)(ps)(s, i, Nil)
-          (s1, Right((i1, as.reverse)))
-        }
+        val (s1, as) = repeatStep(rep.value, ps, s, Nil)
+        (s1, Right(as.reverse))
 
       case rep: Grammar.GADT.Rep1[S, S, E, ta] =>
-        (s: S, i: Input) => {
-          val res1: (S, E \/ (Input, ta)) = step(rep.value)(ps)(s, i)
-          val res2: (S, E \/ (Input, ::[ta])) = res1 match {
-            case (s1, Left(e)) =>
-              (s1, Left(e))
-            case (s1, Right((i1, a1))) =>
-              val (s2, i2, as) = repeatStep(rep.value)(ps)(s1, i1, Nil)
-              (s2, Right((i2, ::(a1, as.reverse))))
-          }
-          res2
+        val res1: (S, E \/ ta) = step(rep.value, ps, s)
+        val res2: (S, E \/ ::[ta]) = res1 match {
+          case (s1, Left(e)) =>
+            (s1, Left(e))
+          case (s1, Right(a1)) =>
+            val (s2, as) = repeatStep(rep.value, ps, s1, Nil)
+            (s2, Right(::(a1, as.reverse)))
         }
+        res2
 
       case sep: Grammar.GADT.Sep[S, S, E, ta, ts] =>
-        (s: S, i: Input) => {
-          val checkpoint = ps.i
-          val (s1, res1): (S, E \/ (Input, ta)) = step(sep.value)(ps)(s, i)
-          val res2: (S, E \/ (Input, SeparatedBy[ta, ts])) = res1 match {
-            case Left(_) =>
-              ps.i = checkpoint
-              (s1, Right((i, SeparatedBy())))
-            case Right((i1, a1)) =>
-              val (s2, i2, as) = repeatStep(sep.sep, sep.value)(ps)(s1, i1, SeparatedBy(a1))
-              (s2, Right((i2, as.reverse)))
-          }
-          res2
+        val checkpoint = ps.i
+        val (s1, res1): (S, E \/ ta) = step(sep.value, ps, s)
+        val res2: (S, E \/ SeparatedBy[ta, ts]) = res1 match {
+          case Left(_) =>
+            ps.i = checkpoint
+            (s1, Right(SeparatedBy()))
+          case Right(a1) =>
+            val (s2, as) = repeatStep(sep.sep, sep.value, ps, s1, SeparatedBy(a1))
+            (s2, Right(as.reverse))
         }
+        res2
     }
 
   @tailrec
-  private def repeatStep[S, E, A](g: Grammar[S, S, E, A])(ps: ParserState[E])(s: S, i: Input, as: List[A]): (S, Input, List[A]) = {
+  private def repeatStep[S, E, A](g: Grammar[S, S, E, A], ps: ParserState[E], s: S, as: List[A]): (S, List[A]) = {
     val checkpoint = ps.i
-    step(g)(ps)(s, i) match {
-      case (s1, Left(_))        => ps.i = checkpoint; (s1, i, as)
-      case (s1, Right((i1, a))) => repeatStep(g)(ps)(s1, i1, a :: as)
+    step(g, ps, s) match {
+      case (s1, Left(_))  => ps.i = checkpoint; (s1, as)
+      case (s1, Right(a)) => repeatStep(g, ps, s1, a :: as)
     }
   }
 
   @tailrec
-  private def repeatStep[S, E, A, B](g1: Grammar[S, S, E, B], g2: Grammar[S, S, E, A])(ps: ParserState[E])(s: S, i: Input, as: SeparatedBy1[A, B]): (S, Input, SeparatedBy1[A, B]) = {
+  private def repeatStep[S, E, A, B](g1: Grammar[S, S, E, B], g2: Grammar[S, S, E, A], ps: ParserState[E], s: S, as: SeparatedBy1[A, B]): (S, SeparatedBy1[A, B]) = {
     val checkpoint = ps.i
-    step(g1)(ps)(s, i) match {
-      case (s1, Left(_))        => ps.i = checkpoint; (s1, i, as)
-      case (s1, Right((i1, b))) => step(g2)(ps)(s1, i1) match {
-        case (s2, Left(_))        => ps.i = checkpoint; (s2, i, as)
-        case (s2, Right((i2, a))) => repeatStep(g1, g2)(ps)(s2, i2, as.prepend(a, b))
+    step(g1, ps, s) match {
+      case (s1, Left(_))  => ps.i = checkpoint; (s1, as)
+      case (s1, Right(b)) => step(g2, ps, s1) match {
+        case (s2, Left(_))  => ps.i = checkpoint; (s2, as)
+        case (s2, Right(a)) => repeatStep(g1, g2, ps, s2, as.prepend(a, b))
       }
     }
   }
