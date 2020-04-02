@@ -103,16 +103,16 @@ object ParserzJsonTest {
   }
 
 
-  val parser: (S, Input) => (S, E \/ Val)  = Parser.parser[S, E, Val](js)
+  val parser: Input => E \/ Val  = Parser.parser[S, E, Val](js)
 
 
   def main(args: Array[String]): Unit = {
     // ((),Right((List(),Obj(List((firstName,Str(John)), (lastName,Str(Smith)), (age,Num(25.0)), (address,Obj(List((streetAddress,Str(21 2nd Street)), (city,Str(New York)), (state,Str(NY)), (postalCode,Num(10021.0))))), (phoneNumbers,Arr(List(Obj(List((type,Str(home)), (number,Str(212 555-1234)))), Obj(List((type,Str(fax)), (number,Str(646 555-4567))))))))))))
-    println(parser((), value))
+    println(parser(value))
 
     val t1: Long = System.nanoTime()
-    (1 to 100000).foreach { _ =>
-      parser((), value)
+    (1 to 1000000).foreach { _ =>
+      parser(value)
     }
     val t2: Long = System.nanoTime() - t1
     println(s"\n\n Execution time = ${(t2 / 1000).toString.reverse.grouped(3).map(_.reverse).toList.reverse.mkString(",")} μs")
@@ -127,8 +127,8 @@ object ParserzJsonTest {
   // 1,000,000  in 49.3 sec
 
   // v.0.2.0 - alpha
-  //   100,000  in  2.4 sec
-  // 1,000,000  in 17.7 sec
+  //   100,000  in  2.0 sec
+  // 1,000,000  in 14.9 sec
 
   val value: Array[Char] =
     """{

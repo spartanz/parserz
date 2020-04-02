@@ -46,29 +46,6 @@ trait ParsersModule2 {
     ): Grammar[SI1, SO1, E1, B] =
       Select[SI1, SO1, E1, A, B](self, f, en)
 
-    final def mapStatefully[SI1 <: SI, SO1 >: SO, B](to: (SI1, A) => (SO1, B), from: (SI1, B) => (SO1, A)): Grammar[SI1, SO1, E, B] =
-      MapS[SI1, SO1, E, A, B](
-        self,
-        { case (si, a) => val (so, b) = to(si, a); (so, Right(b)) },
-        { case (si, b) => val (so, a) = from(si, b); (so, Right(a)) }
-      )
-
-    final def mapStatefullyPartial[SI1 <: SI, SO1 >: SO, E1 >: E, B](
-      fe: SI1 => (SO1, E1)
-    )(to: (SI1, A) =?> (SO1, B), from: (SI1, B) =?> (SO1, A)): Grammar[SI1, SO1, E1, B] =
-      MapS[SI1, SO1, E1, A, B](self, asEither(fe)(to.lift), asEither(fe)(from.lift))
-
-    final def mapOptionS[SI1 <: SI, SO1 >: SO, E1 >: E, B](
-      fe: SI1 => (SO1, E1)
-    )(to: A => Option[B], from: B => Option[A]): Grammar[SI1, SO1, E1, B] =
-      MapES[SI1, SO1, E1, A, B](self, fe, to, from)
-
-    final def mapPartialS[SI1 <: SI, SO1 >: SO, E1 >: E, B](fe: SI1 => (SO1, E1))(to: A =?> B, from: B =?> A): Grammar[SI1, SO1, E1, B] =
-      MapES[SI1, SO1, E1, A, B](self, fe, to.lift, from.lift)
-
-    final def filterS[SI1 <: SI, SO1 >: SO, E1 >: E](fe: SI1 => (SO1, E1))(f: Expr[A]): Grammar[SI1, SO1, E1, A] =
-      FilterES[SI1, SO1, E1, A](self, fe, f)
-
     final def zip[SI1 <: SI, SO1 >: SO, E1 >: E, B](that: Grammar[SI1, SO1, E1, B]): Grammar[SI1, SO1, E1, A /\ B] =
       Zip(self, that)
 
@@ -110,10 +87,7 @@ trait ParsersModule2 {
       private[parserz] case class Delay[SI, SO, E, A](delayed: () => Grammar[SI, SO, E, A]) extends Grammar[SI, SO, E, A]
       private[parserz] case class Tag[SI, SO, E, A](value: Grammar[SI, SO, E, A], tag: String) extends Grammar[SI, SO, E, A]
       private[parserz] case class Map[SI, SO, E, A, B](value: Grammar[SI, SO, E, A], to: A => E \/ B, from: B => E \/ A) extends Grammar[SI, SO, E, B]
-      private[parserz] case class MapS[SI, SO, E, A, B](value: Grammar[SI, SO, E, A], to: (SI, A) => (SO, E \/ B), from: (SI, B) => (SO, E \/ A)) extends Grammar[SI, SO, E, B]
-      private[parserz] case class MapES[SI, SO, E, A, B](value: Grammar[SI, SO, E, A], fe: SI => (SO, E), to: A => Option[B], from: B => Option[A]) extends Grammar[SI, SO, E, B]
       private[parserz] case class Filter[SI, SO, E, A](value: Grammar[SI, SO, E, A], e: E, filter: Expr[A]) extends Grammar[SI, SO, E, A]
-      private[parserz] case class FilterES[SI, SO, E, A](value: Grammar[SI, SO, E, A], fe: SI => (SO, E), filter: Expr[A]) extends Grammar[SI, SO, E, A]
       private[parserz] case class Zip[SI, SO, E, A, B](left: Grammar[SI, SO, E, A], right: Grammar[SI, SO, E, B]) extends Grammar[SI, SO, E, A /\ B]
       private[parserz] case class ZipL[SI, SO, E, A, B](left: Grammar[SI, SO, E, A], right: Grammar[SI, SO, E, B], b: B) extends Grammar[SI, SO, E, A]
       private[parserz] case class ZipR[SI, SO, E, A, B](left: Grammar[SI, SO, E, A], right: Grammar[SI, SO, E, B], a: A) extends Grammar[SI, SO, E, B]
@@ -134,9 +108,6 @@ trait ParsersModule2 {
     final def fail[E, A](e: E): Grammar[Any, Nothing, E, A] =
       unit.mapPartial(e)(PartialFunction.empty, PartialFunction.empty)
 
-    final def fail[SI, SO, E, A](fe: SI => (SO, E)): Grammar[SI, SO, E, A] =
-      unit.mapPartialS(fe)(PartialFunction.empty, PartialFunction.empty)
-
     final def consume[E, A](e: E, codec: InOut.One[E, Input, A]): Grammar[Any, Nothing, E, A] =
       GADT.Consume(codec.consumer, codec.condition, e)
 
@@ -151,12 +122,6 @@ trait ParsersModule2 {
 
     private def asEither[E, A, B](e: E)(f: A => Option[B]): A => E \/ B =
       f(_).map(Right(_)).getOrElse(Left(e))
-
-    private def asEither[SI, SO, E, A, B](fe: SI => (SO, E))(f: ((SI, A)) => Option[(SO, B)]): (SI, A) => (SO, E \/ B) =
-      (si, a) =>
-        f((si, a))
-          .map { case (so, b) => so -> Right(b) }
-          .getOrElse { val (so, e1) = fe(si); so -> Left(e1) }
   }
 
   trait GrammarSyntax {
@@ -209,15 +174,12 @@ trait ParsersModule2 {
 
   private class ParserState[+E](val input: Input, var i: Int, var e: List[InOut.Error])
 
-  final def parser[S, E, A](grammar: Grammar[S, S, E, A]): (S, Input) => (S, E \/ A) = {
-    (s: S, input: Input) => {
-      step(grammar, new ParserState(input, 0, Nil), s)
-    }
-  }
+  final def parser[S, E, A](grammar: Grammar[S, S, E, A]): Input => E \/ A =
+    input => step(grammar, new ParserState(input, 0, Nil))
 
-  private def step[S, E, A](grammar: Grammar[S, S, E, A], ps: ParserState[E], s: S): (S, E \/ A) =
+  private def step[S, E, A](grammar: Grammar[S, S, E, A], ps: ParserState[E]): E \/ A =
     grammar match {
-      case Grammar.GADT.Consume(c, cond, e) => (s, {
+      case Grammar.GADT.Consume(c, cond, e) =>
         import InOut.Consumer.Simple._
         val cas = c.feed(c.create(), ps.input, ps.i)
         ps.i += extractCount(cas)
@@ -228,9 +190,8 @@ trait ParsersModule2 {
         catch {
           case InOut.NoInput  => Left(e)
         }
-      })
 
-      case Grammar.GADT.ConsumeMany(c, e) => (s, {
+      case Grammar.GADT.ConsumeMany(c, e) =>
         val state = c.create()
         val count = c.feed(state, ps.input, ps.i)
         ps.i += count
@@ -240,9 +201,8 @@ trait ParsersModule2 {
         catch {
           case InOut.NoInput  => Left(e)
         }
-      })
 
-      case Grammar.GADT.ConsumeToken(c, e) => (s, {
+      case Grammar.GADT.ConsumeToken(c, e) =>
         val state = c.create()
         val count = c.feed(state, ps.input, ps.i)
         ps.i += count
@@ -254,152 +214,112 @@ trait ParsersModule2 {
           case InOut.NotFound => Left(e)
           case InOut.NoInput  => Left(e)
         }
-      })
 
 
-      case Grammar.GADT.Produce(a)      => (s, Right(a))
-      case Grammar.GADT.Tag(value, _)   => step(value, ps, s)
-      case Grammar.GADT.Delay(delayed)  => step(delayed(), ps, s)
+      case Grammar.GADT.Produce(a)     => Right(a)
+      case Grammar.GADT.Tag(value, _)  => step(value, ps)
+      case Grammar.GADT.Delay(delayed) => step(delayed(), ps)
 
       case Grammar.GADT.Map(value, to, _) =>
-        val (s1, res1) = step(value, ps, s)
-        (s1, res1.flatMap(to))
-
-      case Grammar.GADT.MapS(value, to, _) =>
-        val (s1, res1) = step(value, ps, s)
-        res1.fold(
-          e => s1 -> Left(e),
-          a => to(s1, a)
-        )
-
-      case Grammar.GADT.MapES(value, es, to, _) =>
-        val (s1, res1) = step(value, ps, s)
-        res1 match {
-          case Left(e) =>
-            s1 -> Left(e)
-          case Right(a) =>
-            to(a)
-              .map { b =>
-                s1 -> Right(b)
-              }
-              .getOrElse {
-                val (s2, e) = es(s1)
-                s2 -> Left(e)
-              }
-        }
+        step(value, ps).flatMap(to)
 
       case Grammar.GADT.Filter(value, e, expr) =>
-        val (s1, res1) = step(value, ps, s)
-        s1 -> res1.flatMap {
+        step(value, ps).flatMap {
           a =>
             if (exprFilter(expr)(a)) Right(a)
             else Left(e)
         }
 
-      case Grammar.GADT.FilterES(value, es, expr) =>
-        val (s1, res1) = step(value, ps, s)
-        res1 match {
-          case Left(e) =>
-            s1 -> Left(e)
-          case Right(a) =>
-            if (exprFilter(expr)(a))
-              s1 -> Right(a)
-            else {
-              val (s2, e) = es(s1)
-              s2 -> Left(e)
-            }
-        }
-
       case zip: Grammar.GADT.Zip[S, S, E, ta, tb] =>
-        val (s1, res1): (S, E \/ ta) = step(zip.left, ps, s)
-        val ret: (S, E \/ (ta, tb)) = res1 match {
-          case Left(e1) => (s1, Left(e1))
+        val res1: E \/ ta = step(zip.left, ps)
+        val ret: E \/ (ta, tb) = res1 match {
+          case Left(e1) => Left(e1)
           case Right(a) =>
-            val (s2, res2) = step(zip.right, ps, s1)
-            (s2, res2.map[(ta, tb)](b => (a, b)))
+            val res2 = step(zip.right, ps)
+            res2.map[(ta, tb)](b => (a, b))
         }
         ret
 
       case zip: Grammar.GADT.ZipL[S, S, E, ta, tb] =>
-        val (s1, res1): (S, E \/ ta) = step(zip.left, ps, s)
+        val res1: E \/ ta = step(zip.left, ps)
         res1 match {
-          case Left(e1) => (s1, Left(e1))
+          case Left(e1) => Left(e1)
           case Right(a) =>
-            val (s2, res2) = step(zip.right, ps, s1)
-            (s2, res2.map(_ => a))
+            val res2 = step(zip.right, ps)
+            res2.map(_ => a)
         }
 
       case zip: Grammar.GADT.ZipR[S, S, E, ta, tb] =>
-        val (s1, res1): (S, E \/ ta) = step(zip.left, ps, s)
+        val res1: E \/ ta = step(zip.left, ps)
         res1 match {
-          case Left(e1) => (s1, Left(e1))
-          case Right(_) => step(zip.right, ps, s1)
+          case Left(e1) => Left(e1)
+          case Right(_) => step(zip.right, ps)
         }
 
       case alt: Grammar.GADT.Alt[S, S, E, ta, tb] =>
         val checkpoint = ps.i
-        val (s1, res1): (S, E \/ ta) = step(alt.left, ps, s)
-        val ret: (S, E \/ (ta \/ tb)) = res1 match {
-          case Right(a) => (s1, Right(Left(a)))
+        val res1: E \/ ta = step(alt.left, ps)
+        val ret: E \/ (ta \/ tb) = res1 match {
+          case Right(a) => Right(Left(a))
           case Left(_)  =>
             ps.i = checkpoint
-            val (s2, res2) = step(alt.right, ps, s1)
-            (s2, res2.map(Right(_)))
+            val res2 = step(alt.right, ps)
+            res2.map(Right(_))
         }
         ret
 
       case sel: Grammar.GADT.Select[S, S, E, _, _] =>
-        step(sel.value, ps, s) match {
-          case (s1, Left(e))  => (s1, Left(e))
-          case (s1, Right(a)) => step(sel.f(a), ps, s1)
+        step(sel.value, ps) match {
+          case Left(e)  => Left(e)
+          case Right(a) => step(sel.f(a), ps)
         }
 
       case rep: Grammar.GADT.Rep[S, S, E, ta] =>
-        val (s1, as) = repeatStep(rep.value, ps, s, Nil)
-        (s1, Right(as.reverse))
+        val as = repeatStep(rep.value, ps, Nil)
+        Right(as.reverse)
 
       case rep: Grammar.GADT.Rep1[S, S, E, ta] =>
-        val res1: (S, E \/ ta) = step(rep.value, ps, s)
-        val res2: (S, E \/ ::[ta]) = res1 match {
-          case (s1, Left(e)) =>
-            (s1, Left(e))
-          case (s1, Right(a1)) =>
-            val (s2, as) = repeatStep(rep.value, ps, s1, Nil)
-            (s2, Right(::(a1, as.reverse)))
+        val res1: E \/ ta = step(rep.value, ps)
+        val res2: E \/ ::[ta] = res1 match {
+          case Left(e) =>
+            Left(e)
+          case Right(a1) =>
+            val as = repeatStep(rep.value, ps, Nil)
+            Right(::(a1, as.reverse))
         }
         res2
 
       case sep: Grammar.GADT.Sep[S, S, E, ta, ts] =>
         val checkpoint = ps.i
-        val (s1, res1): (S, E \/ ta) = step(sep.value, ps, s)
-        val res2: (S, E \/ SeparatedBy[ta, ts]) = res1 match {
+        val res1: E \/ ta = step(sep.value, ps)
+        val res2: E \/ SeparatedBy[ta, ts] = res1 match {
           case Left(_) =>
             ps.i = checkpoint
-            (s1, Right(SeparatedBy()))
+            Right(SeparatedBy())
           case Right(a1) =>
-            val (s2, as) = repeatStep(sep.sep, sep.value, ps, s1, SeparatedBy(a1))
-            (s2, Right(as.reverse))
+            val as = repeatStep(sep.sep, sep.value, ps, SeparatedBy(a1))
+            Right(as.reverse)
         }
         res2
     }
 
   @tailrec
-  private def repeatStep[S, E, A](g: Grammar[S, S, E, A], ps: ParserState[E], s: S, as: List[A]): (S, List[A]) = {
+  private def repeatStep[S, E, A](g: Grammar[S, S, E, A], ps: ParserState[E], as: List[A]): List[A] = {
     val checkpoint = ps.i
-    step(g, ps, s) match {
-      case (s1, Left(_))  => ps.i = checkpoint; (s1, as)
-      case (s1, Right(a)) => repeatStep(g, ps, s1, a :: as)
+    step(g, ps) match {
+      case Left(_)  => ps.i = checkpoint; as
+      case Right(a) => repeatStep(g, ps, a :: as)
     }
   }
 
   @tailrec
-  private def repeatStep[S, E, A, B](g1: Grammar[S, S, E, B], g2: Grammar[S, S, E, A], ps: ParserState[E], s: S, as: SeparatedBy1[A, B]): (S, SeparatedBy1[A, B]) = {
+  private def repeatStep[S, E, A, B](g1: Grammar[S, S, E, B], g2: Grammar[S, S, E, A], ps: ParserState[E], as: SeparatedBy1[A, B]): SeparatedBy1[A, B] = {
     val checkpoint = ps.i
-    step(g1, ps, s) match {
-      case (s1, Left(_))  => ps.i = checkpoint; (s1, as)
-      case (s1, Right(b)) => step(g2, ps, s1) match {
-        case (s2, Left(_))  => ps.i = checkpoint; (s2, as)
-        case (s2, Right(a)) => repeatStep(g1, g2, ps, s2, as.prepend(a, b))
+    step(g1, ps) match {
+      case Left(_)  => ps.i = checkpoint; as
+      case Right(b) => step(g2, ps) match {
+        case Left(_)  => ps.i = checkpoint; as
+        case Right(a) => repeatStep(g1, g2, ps, as.prepend(a, b))
       }
     }
   }
