@@ -36,7 +36,7 @@ object ParserzJsonTest {
     consume(s"expected: '$c'", Chars.oneIf(===(c)))
 
   def token[A](t: String, v: A): G[A] =
-    consumeToken(s"expected: '$t'", Chars.token(t)).map(_ => v, _ => t.toCharArray)
+    consumeToken(s"expected: '$t'", Chars.exact(t)).map(_ => v, _ => t.toCharArray)
 
   val dot: G[Char]      = char('.')
   val comma: G[Char]    = char(',')

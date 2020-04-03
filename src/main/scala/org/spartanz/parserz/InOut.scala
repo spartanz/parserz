@@ -35,9 +35,9 @@ object InOut {
     }
     object Simple {
       final type CountAndState = Long
-      final def create(count: Int, state: Int): CountAndState = (count.toLong << 32) + state.toLong
-      final def extractCount(s: CountAndState): Int = (s >> 32).toInt
-      final def extractState(s: CountAndState): Int = s.toInt
+      final def create(count: Int, state: Int): CountAndState = ((0xFFFFFFFFL & count) << 32) | (0xFFFFFFFFL & state)
+      final def extractCount(cas: CountAndState): Int = (cas >>> 32).toInt
+      final def extractState(cas: CountAndState): Int = cas.toInt
     }
   }
 
@@ -60,24 +60,25 @@ object InOut {
 
   case class One[+E, I, A](consumer: Consumer.Simple[E, I, A], condition: A => Boolean)
   case class Many[+E, I, A](consumer: Consumer.Mutable[E, I, A])
-  case class ManyConditional[+E, I, A](consumer: Consumer.Mutable[E, I, A])
+  case class Exact[+E, I, A](consumer: Consumer.Simple[E, I, A])
 
 
   object Chars {
     import Consumer._
 
-    private val single: Simple[Nothing, Array[Char], Char] = new Simple[Nothing, Array[Char], Char] {
-      final val create: Int = -1
-      final def needsMoreInput(s: Int): Boolean = s == -1
+    private val single: Simple[Nothing, Array[Char], Char] =
+      new Simple[Nothing, Array[Char], Char] {
+        final val create: Int = -1
+        final def needsMoreInput(s: Int): Boolean = s == -1
 
-      final def feed(s: Int, input: Array[Char], i: Int): Simple.CountAndState =
-        try { Simple.create(1, input(i).toInt) }
-        catch { case _: ArrayIndexOutOfBoundsException => -1L }
+        final def feed(s: Int, input: Array[Char], i: Int): Simple.CountAndState =
+          try { Simple.create(1, input(i).toInt) }
+          catch { case _: ArrayIndexOutOfBoundsException => -1L }
 
-      final def finish(s: Int): Char =
-        if (s == -1) throw NoInput
-        else s.toChar
-    }
+        final def finish(s: Int): Char =
+          if (s == -1) throw NoInput
+          else s.toChar
+      }
 
     private def multiple(p: Char => Boolean): Mutable[Nothing, Array[Char], Array[Char]] = {
       class St(var acc: Array[Char], var done: Boolean)
@@ -109,35 +110,36 @@ object InOut {
     def oneIf(expr: Expr[Char]): One[Nothing, Array[Char], Char] =
       One(single, Expr.exprFilter(expr))
 
-    def manyWhile[E](expr: Expr[Char]): Many[E, Array[Char], Array[Char]] =
+    def manyWhile(expr: Expr[Char]): Many[Nothing, Array[Char], Array[Char]] =
       Many(multiple(Expr.exprFilter(expr)))
 
-    def token[E](t: String): ManyConditional[E, Array[Char], Array[Char]] = {
-      val req = t.toCharArray
-      val len = t.length
+    def exact(t: String): Exact[Nothing, Array[Char], Array[Char]] =
+      Exact(
+        new Simple[Nothing, Array[Char], Array[Char]] {
+          private val req = t.toCharArray
+          private val len = t.length
 
-      class S(var read: Int, var res: Boolean)
+          // bit0: means "no match detected" if set
+          // all other bits are number of chars consumed so far
+          final val create: Int = 0
+          final def needsMoreInput(s: Int): Boolean = (s >>> 31) == 0 && s < len
 
-      ManyConditional(
-        new Mutable[E, Array[Char], Array[Char]] {
-          final type State = S
-          final def create(): State = new S(0, false)
-          final def copy(s: State): State = new S(s.read, s.res)
-          final def needsMoreInput(s: State): Boolean = s.read < len
-
-          final def feed(s: State, input: Array[Char], i: Int): Int =
-            try { s.res = unsafeCompare(req, 0, input, i, len); s.read = len; len }
+          final def feed(s: Int, input: Array[Char], i: Int): Long = {
+            try { Simple.create(len, if (unsafeCompare(req, 0, input, i, len)) len else 0x80000000 | len) }
             catch { case _: ArrayIndexOutOfBoundsException =>
-              // todo: consume available chars and update state
-              0
+              // todo: consume available chars and update state, e.g.
+              val consumed = 0
+              val matching = true
+              Simple.create(0, if (matching) consumed else 0x80000000 | consumed)
             }
+          }
 
-          final def finish(s: State): Array[Char] =
-            if (s.read != len) throw NoInput
-            else if (s.res) req
-            else null
+          final def finish(s: Int): Array[Char] = {
+            if ((s >>> 31) == 1) null
+            else if (s < len) throw NoInput
+            else req
+          }
         }
       )
-    }
   }
 }

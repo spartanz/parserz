@@ -83,7 +83,7 @@ trait ParsersModule2 {
       private[parserz] case class Produce[SI, SO, E, A](a: A) extends Grammar[Any, Nothing, Nothing, A]
       private[parserz] case class Consume[SI, SO, E, A](consumer: InOut.Consumer.Simple[E, Input, A], condition: A => Boolean, e: E) extends Grammar[SI, SO, E, A]
       private[parserz] case class ConsumeMany[SI, SO, E, A](consumer: InOut.Consumer.Mutable[E, Input, A], e: E) extends Grammar[SI, SO, E, A]
-      private[parserz] case class ConsumeToken[SI, SO, E, A](consumer: InOut.Consumer.Mutable[E, Input, A], e: E) extends Grammar[SI, SO, E, A]
+      private[parserz] case class ConsumeExact[SI, SO, E, A](consumer: InOut.Consumer.Simple[E, Input, A], e: E) extends Grammar[SI, SO, E, A]
       private[parserz] case class Delay[SI, SO, E, A](delayed: () => Grammar[SI, SO, E, A]) extends Grammar[SI, SO, E, A]
       private[parserz] case class Tag[SI, SO, E, A](value: Grammar[SI, SO, E, A], tag: String) extends Grammar[SI, SO, E, A]
       private[parserz] case class Map[SI, SO, E, A, B](value: Grammar[SI, SO, E, A], to: A => E \/ B, from: B => E \/ A) extends Grammar[SI, SO, E, B]
@@ -114,8 +114,8 @@ trait ParsersModule2 {
     final def consume[E, A](e: E, codec: InOut.Many[E, Input, A]): Grammar[Any, Nothing, E, A] =
       GADT.ConsumeMany(codec.consumer, e)
 
-    final def consumeToken[E, A](e: E, codec: InOut.ManyConditional[E, Input, A]): Grammar[Any, Nothing, E, A] =
-      GADT.ConsumeToken(codec.consumer, e)
+    final def consumeToken[E, A](e: E, codec: InOut.Exact[E, Input, A]): Grammar[Any, Nothing, E, A] =
+      GADT.ConsumeExact(codec.consumer, e)
 
     final def delay[SI, SO, E, A](g: => Grammar[SI, SO, E, A]): Grammar[SI, SO, E, A] =
       GADT.Delay(() => g)
@@ -188,6 +188,18 @@ trait ParsersModule2 {
           if (cond == null || cond(res)) Right(res) else Left(e)
         }
         catch {
+          case InOut.NoInput => Left(e)
+        }
+
+      case Grammar.GADT.ConsumeExact(c, e) =>
+        import InOut.Consumer.Simple._
+        val cas = c.feed(c.create(), ps.input, ps.i)
+        ps.i += extractCount(cas)
+        try {
+          val res = c.finish(extractState(cas))
+          if (res == null) Left(e) else Right(res)
+        }
+        catch {
           case InOut.NoInput  => Left(e)
         }
 
@@ -199,20 +211,7 @@ trait ParsersModule2 {
           Right(c.finish(state))
         }
         catch {
-          case InOut.NoInput  => Left(e)
-        }
-
-      case Grammar.GADT.ConsumeToken(c, e) =>
-        val state = c.create()
-        val count = c.feed(state, ps.input, ps.i)
-        ps.i += count
-        try {
-          val res = c.finish(state)
-          if (res == null) Left(e) else Right(res)
-        }
-        catch {
-          case InOut.NotFound => Left(e)
-          case InOut.NoInput  => Left(e)
+          case InOut.NoInput => Left(e)
         }
 
 
