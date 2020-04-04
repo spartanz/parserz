@@ -1,6 +1,8 @@
 package org.spartanz.parserz.compare
 
-import org.spartanz.parserz.{ParsersModule, \/}
+import org.spartanz.parserz.{ParsersModule2, \/}
+import org.spartanz.parserz.Expr._
+import org.spartanz.parserz.InOut._
 
 object ParserzJsonTest {
 
@@ -18,12 +20,11 @@ object ParserzJsonTest {
   }
 
 
-  object Parser extends ParsersModule {
-    override type Input = List[Char]
+  object Parser extends ParsersModule2 {
+    override type Input = Array[Char]
   }
 
   import Parser.Grammar._
-  import Parser.Expr._
   import Parser._
   import Js._
 
@@ -31,14 +32,11 @@ object ParserzJsonTest {
   type E    = String
   type G[A] = Grammar[Any, Nothing, E, A]
 
-  def char(c: Char): G[Char] = consume(
-    cs => if (cs.nonEmpty && cs.head == c) Right((cs.tail, c)) else Left("expected: " + c),
-    { case (cs, _) => Right(c :: cs) }
-  )
-  def token(t: List[Char]): G[List[Char]] = consume(
-    cs => if (cs.startsWith(t)) Right((cs.drop(t.length), t)) else Left("expected: " + t),
-    { case (cs, _) => Right(t reverse_::: cs) }
-  )
+  def char(c: Char): G[Char] =
+    consume(s"expected: '$c'", Chars.oneIf(===(c)))
+
+  def token[A](t: String, v: A): G[A] =
+    consumeToken(s"expected: '$t'", Chars.exact(t)).map(_ => v, _ => t.toCharArray)
 
   val dot: G[Char]      = char('.')
   val comma: G[Char]    = char(',')
@@ -49,40 +47,26 @@ object ParserzJsonTest {
   val brace1: G[Char]   = char('{')
   val brace2: G[Char]   = char('}')
 
-  val spacing: G[Unit] = consumePure(
-    cs => (cs.dropWhile(c => c == ' ' || c == '\n' || c == '\r'), ()),
-    { case (cs, _) => ' ' :: cs }
-  )
+  val spacing: G[Unit] = consume("expected: spacing", Chars.manyWhile(in(' ', '\n', '\r'))).map(_ => (), _ => Array.emptyCharArray)
 
-  val ch: G[Char] = consume(
-    cs => if (cs.nonEmpty) Right((cs.tail, cs.head)) else Left("expected: char"),
-    { case (cs, c) => Right(c :: cs) }
-  )
+  def chars(p: Char => Boolean): G[Array[Char]] = consume("expected: conditional", Chars.manyWhile(cond(p)))
 
-  def chars(cond: Char => Boolean): G[List[Char]] = consumePure({
-    cs =>
-      val out = cs.takeWhile(cond)
-      (cs.drop(out.length), out)
-    }, {
-      case (cs, cs1) => cs1 reverse_::: cs
-    })
-
-  val digits: G[List[Char]]     = chars(c => '0' <= c && c <= '9')
-  val sign: G[Option[Char]]     = ch.filter("expected: +/-")(in('+', '-')).option
-  val exponent: G[List[Char]]   = (ch.filter("expected: E")(in('e', 'E')) ~ sign, ('E', Some('+'))) ~> digits
-  val fractional: G[List[Char]] = (dot, '.') ~> digits
-  val integral: G[List[Char]]   = digits
+  val digits: G[Array[Char]]     = chars(c => '0' <= c && c <= '9')
+  val sign: G[Option[Char]]      = consume("expected: +/-", Chars.oneIf(in('+', '-'))).option
+  val exponent: G[Array[Char]]   = (consume("expected: E/e", Chars.oneIf(in('e', 'E'))) ~ sign, ('E', Some('+'))) ~> digits
+  val fractional: G[Array[Char]] = (dot, '.') ~> digits
+  val integral: G[Array[Char]]   = digits
 
   val num: G[Num] = (sign ~ integral ~ fractional.orEmpty ~ exponent.orEmpty).map(
     { case (((s, l1), l2), l3) => Num((s.mkString + l1.mkString + l2.mkString + l3.mkString).toDouble) },
     { case Num(_) => ??? }
   )
 
-  val `null`: G[Null.type]   = token("null".toList).map( _ => Null,  _ => "null".toList)
-  val `false`: G[False.type] = token("false".toList).map(_ => False, _ => "false".toList)
-  val `true`: G[True.type]   = token("true".toList).map( _ => True,  _ => "true".toList)
+  val `null`: G[Null.type]   = token("null", Null)
+  val `false`: G[False.type] = token("false", False)
+  val `true`: G[True.type]   = token("true", True)
 
-  val string: G[String] = ((spacing ~ quote, ((), '"')) ~> chars(c => c != '\"' && c != '\\') <~ ('"', quote)).map(_.mkString, _.toList)
+  val string: G[String] = ((spacing ~ quote, ((), '"')) ~> chars(c => c != '\"' && c != '\\') <~ ('"', quote)).map(_.mkString, _.toCharArray)
   val str: G[Str] = string.map(Str, "\"" + _.value + "\"")
 
   val arr: G[Arr] = ((bracket1, '[') ~> js.separated(comma).map(_.values, { _: List[Val] => ??? }) <~ (((), ']'), spacing ~ bracket2)).map(
@@ -119,25 +103,34 @@ object ParserzJsonTest {
   }
 
 
-  val parser: (S, Input) => (S, E \/ (Input, Val))  = Parser.parser[S, E, Val](js)
+  val parser: Input => E \/ Val  = Parser.parser[S, E, Val](js)
 
 
   def main(args: Array[String]): Unit = {
     // ((),Right((List(),Obj(List((firstName,Str(John)), (lastName,Str(Smith)), (age,Num(25.0)), (address,Obj(List((streetAddress,Str(21 2nd Street)), (city,Str(New York)), (state,Str(NY)), (postalCode,Num(10021.0))))), (phoneNumbers,Arr(List(Obj(List((type,Str(home)), (number,Str(212 555-1234)))), Obj(List((type,Str(fax)), (number,Str(646 555-4567))))))))))))
-    println(parser((), value))
+    println(parser(value))
 
     val t1: Long = System.nanoTime()
     (1 to 1000000).foreach { _ =>
-      parser((), value)
+      parser(value)
     }
     val t2: Long = System.nanoTime() - t1
     println(s"\n\n Execution time = ${(t2 / 1000).toString.reverse.grouped(3).map(_.reverse).toList.reverse.mkString(",")} μs")
   }
 
+  // v.0.1.4
   //   100,000  in  3.3 sec
   // 1,000,000  in 24.9 sec
 
-  val value: List[Char] =
+  // v.0.2.0 - pre-alpha
+  //   100,000  in  5.5 sec
+  // 1,000,000  in 49.3 sec
+
+  // v.0.2.0 - alpha
+  //   100,000  in  1.9 sec
+  // 1,000,000  in 14.1 sec
+
+  val value: Array[Char] =
     """{
       |  "firstName": "John",
       |  "lastName": "Smith",
@@ -158,5 +151,5 @@ object ParserzJsonTest {
       |          "number": "646 555-4567"
       |      }
       |  ]
-      |}""".stripMargin.toList
+      |}""".stripMargin.toCharArray
 }
