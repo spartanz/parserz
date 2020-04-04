@@ -127,8 +127,8 @@ object ParserzJsonTest {
   // 1,000,000  in 49.3 sec
 
   // v.0.2.0 - alpha
-  //   100,000  in  2.0 sec
-  // 1,000,000  in 14.9 sec
+  //   100,000  in  1.9 sec
+  // 1,000,000  in 14.1 sec
 
   val value: Array[Char] =
     """{

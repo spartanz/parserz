@@ -6,7 +6,6 @@ object InOut {
 
   sealed trait Error extends RuntimeException with NoStackTrace
   case object NoInput extends Error
-  case object NotFound extends Error
 
   private def unsafeCompare[A](arr1: Array[A], i1: Int, arr2: Array[A], i2: Int, len: Int): Boolean = {
     var i = 0
